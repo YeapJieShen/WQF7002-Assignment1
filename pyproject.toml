@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "personal-resource-planner"
 version = "0.1.0"
@@ -12,20 +16,91 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit"]
+dev = [
+    "hypothesis",
+    "import-linter",
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+planner = ["py.typed", "resources/**/*"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP"]
+select = ["ALL"]
+ignore = [
+    "D203",     # conflicts with D211
+    "D213",     # conflicts with D212
+    "COM812",   # conflicts with the formatter
+    "ISC001",   # conflicts with the formatter
+    "CPY",
+    "EM",       # exception message variables add noise for pydantic validator errors
+    "TRY003",
+    "TD",
+    "FIX",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004", "ANN", "D", "SLF001", "DTZ"]  # DTZ: times are naive by design
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "planner.domain.models.Frozen",
+    "planner.app.tools.args.ToolArgs",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.mypy]
 python_version = "3.13"
-ignore_missing_imports = true
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["llm: needs a live LLM backend (never run in CI)"]
-addopts = "-m 'not llm'"
+addopts = "-m 'not llm' --strict-markers --strict-config"
+
+[tool.coverage.run]
+source = ["planner"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+exclude_also = ["pragma: no cover"]
+
+[tool.importlinter]
+root_package = "planner"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers point inward: adapters -> app -> domain"
+type = "layers"
+layers = ["planner.adapters", "planner.app", "planner.domain"]
+
+[[tool.importlinter.contracts]]
+name = "Domain and app stay framework-free"
+type = "forbidden"
+source_modules = ["planner.domain", "planner.app"]
+forbidden_modules = ["langgraph", "langchain_core", "langchain_openai", "openai", "gradio"]
