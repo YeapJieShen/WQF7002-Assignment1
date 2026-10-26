@@ -1,0 +1,78 @@
+{
+  "now": "2026-10-28T15:40",
+  "location": "office",
+  "pace": {
+    "density": 0.5,
+    "distribution": 0.5
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Finish assignment",
+      "type": "flexible",
+      "duration_min": 360,
+      "deadline": "2026-11-01T23:59",
+      "place": "anywhere",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "title": "Car service",
+      "type": "errand",
+      "duration_min": 120,
+      "deadline": "2026-10-28T18:00",
+      "place": "workshop",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "Buy groceries",
+      "type": "errand",
+      "duration_min": 45,
+      "deadline": "2026-10-29T18:00",
+      "place": "grocery",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "Reply to supervisor",
+      "type": "flexible",
+      "duration_min": 15,
+      "deadline": "2026-10-28T23:59",
+      "place": "anywhere",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "Drive home",
+      "type": "fixed_event",
+      "duration_min": 60,
+      "deadline": null,
+      "place": "home",
+      "earliest_start": "2026-10-30T09:00",
+      "prerequisites": [
+        "T2"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "E1",
+      "title": "Class at UM",
+      "type": "fixed_event",
+      "duration_min": 180,
+      "deadline": null,
+      "place": "um",
+      "earliest_start": "2026-10-28T19:00",
+      "prerequisites": [],
+      "status": "todo"
+    }
+  ]
+}
