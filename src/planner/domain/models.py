@@ -257,6 +257,15 @@ class SessionState(Frozen):
         """Ids of all tasks."""
         return frozenset(t.id for t in self.tasks)
 
+    def with_tasks(self, tasks: tuple[Task, ...]) -> SessionState:
+        """Return a copy with a different task list.
+
+        Built from the fields rather than `model_copy`, which would carry over the cached
+        `task_ids` of the old list.
+        """
+        fields = {name: getattr(self, name) for name in type(self).model_fields}
+        return SessionState(**{**fields, "tasks": tasks})
+
     def task(self, task_id: str) -> Task | None:
         """Return the task with this id, or None."""
         return next((t for t in self.tasks if t.id == task_id), None)
