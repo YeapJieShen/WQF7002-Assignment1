@@ -1,0 +1,31 @@
+[project]
+name = "personal-resource-planner"
+version = "0.1.0"
+description = "Planning delegate: an intelligent agent that knows its limits"
+requires-python = ">=3.13"
+dependencies = [
+    "gradio",
+    "langgraph",
+    "langchain-core",
+    "langchain-openai",
+    "pydantic>=2",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["llm: needs a live LLM backend (never run in CI)"]
+addopts = "-m 'not llm'"
