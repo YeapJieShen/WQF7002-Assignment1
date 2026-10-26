@@ -113,6 +113,26 @@ class Place(Frozen):
     category: str
     hours: tuple[OpeningWindow, ...] = ()
 
+    def is_open_during(self, start: datetime, end: datetime) -> bool:
+        """Tell whether the place is open for the whole interval.
+
+        Args:
+            start: When the visit begins.
+            end: When the visit ends.
+
+        Returns:
+            True if the place has no listed hours, or one opening window covers the interval.
+            A visit that spans midnight never fits.
+        """
+        if not self.hours:
+            return True
+        if start.date() != end.date():
+            return False
+        day = tuple(Weekday)[start.weekday()]
+        return any(
+            day in w.days and w.opens <= start.time() and end.time() <= w.closes for w in self.hours
+        )
+
 
 class TravelLeg(Frozen):
     """One row of the travel table.
@@ -172,6 +192,10 @@ class BaseData(Frozen):
                 msg = f"travel table names an unknown place: {leg.origin} -> {leg.destination}"
                 raise ValueError(msg)
         return self
+
+    def place(self, place_id: str) -> Place | None:
+        """Return the place with this id, or None."""
+        return next((p for p in self.places if p.id == place_id), None)
 
     @cached_property
     def place_ids(self) -> frozenset[str]:
