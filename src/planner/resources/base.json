@@ -1,0 +1,42 @@
+{
+  "config": {"slot_min": 15, "horizon_days": 7, "daily_work_cap_min": 600, "min_break_min": 15},
+  "places": [
+    {"id": "home", "name": "Home", "category": "home", "hours": []},
+    {"id": "office", "name": "Office", "category": "work", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri"], "opens": "08:00", "closes": "19:00"}]},
+    {"id": "um", "name": "Universiti Malaya", "category": "campus", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "opens": "07:00", "closes": "22:30"}]},
+    {"id": "workshop", "name": "Car workshop", "category": "service", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri"], "opens": "09:00", "closes": "18:00"}, {"days": ["sat"], "opens": "09:00", "closes": "13:00"}]},
+    {"id": "grocery", "name": "Grocery store", "category": "shop", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "opens": "08:00", "closes": "22:00"}]},
+    {"id": "post_office", "name": "Post office", "category": "service", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri"], "opens": "09:00", "closes": "17:00"}, {"days": ["sat"], "opens": "09:00", "closes": "12:30"}]},
+    {"id": "pharmacy", "name": "Pharmacy", "category": "shop", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "opens": "09:00", "closes": "21:00"}]},
+    {"id": "library", "name": "Faculty library", "category": "campus", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri"], "opens": "08:30", "closes": "21:00"}, {"days": ["sat"], "opens": "09:00", "closes": "17:00"}]}
+  ],
+  "travel": [
+    {"origin": "home", "destination": "office", "mode": "drive", "minutes": 30, "buffer_min": 10},
+    {"origin": "home", "destination": "office", "mode": "transit", "minutes": 55, "buffer_min": 5},
+    {"origin": "home", "destination": "um", "mode": "drive", "minutes": 25, "buffer_min": 10},
+    {"origin": "home", "destination": "um", "mode": "transit", "minutes": 45, "buffer_min": 5},
+    {"origin": "home", "destination": "workshop", "mode": "drive", "minutes": 20, "buffer_min": 5},
+    {"origin": "home", "destination": "grocery", "mode": "drive", "minutes": 10, "buffer_min": 5},
+    {"origin": "home", "destination": "post_office", "mode": "drive", "minutes": 12, "buffer_min": 5},
+    {"origin": "home", "destination": "pharmacy", "mode": "drive", "minutes": 8, "buffer_min": 5},
+    {"origin": "home", "destination": "library", "mode": "drive", "minutes": 25, "buffer_min": 10},
+    {"origin": "office", "destination": "um", "mode": "drive", "minutes": 20, "buffer_min": 10},
+    {"origin": "office", "destination": "um", "mode": "transit", "minutes": 40, "buffer_min": 5},
+    {"origin": "office", "destination": "workshop", "mode": "drive", "minutes": 25, "buffer_min": 5},
+    {"origin": "office", "destination": "grocery", "mode": "drive", "minutes": 15, "buffer_min": 5},
+    {"origin": "office", "destination": "post_office", "mode": "drive", "minutes": 10, "buffer_min": 5},
+    {"origin": "office", "destination": "pharmacy", "mode": "drive", "minutes": 10, "buffer_min": 5},
+    {"origin": "office", "destination": "library", "mode": "drive", "minutes": 20, "buffer_min": 10},
+    {"origin": "um", "destination": "workshop", "mode": "drive", "minutes": 30, "buffer_min": 5},
+    {"origin": "um", "destination": "grocery", "mode": "drive", "minutes": 15, "buffer_min": 5},
+    {"origin": "um", "destination": "post_office", "mode": "drive", "minutes": 18, "buffer_min": 5},
+    {"origin": "um", "destination": "pharmacy", "mode": "drive", "minutes": 12, "buffer_min": 5},
+    {"origin": "um", "destination": "library", "mode": "drive", "minutes": 5, "buffer_min": 5},
+    {"origin": "workshop", "destination": "grocery", "mode": "drive", "minutes": 12, "buffer_min": 5},
+    {"origin": "workshop", "destination": "post_office", "mode": "drive", "minutes": 15, "buffer_min": 5},
+    {"origin": "workshop", "destination": "pharmacy", "mode": "drive", "minutes": 10, "buffer_min": 5},
+    {"origin": "grocery", "destination": "post_office", "mode": "drive", "minutes": 8, "buffer_min": 5},
+    {"origin": "grocery", "destination": "pharmacy", "mode": "drive", "minutes": 5, "buffer_min": 5},
+    {"origin": "post_office", "destination": "pharmacy", "mode": "drive", "minutes": 7, "buffer_min": 5}
+  ]
+}
