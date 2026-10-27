@@ -8,13 +8,23 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from planner.app import feasibility, scheduler
 from planner.app.validation import DELETE_ALL
 from planner.domain.models import ANYWHERE, SessionState, Task, TaskType
 
 if TYPE_CHECKING:
-    from planner.app.tools.args import AddTaskArgs, DeleteTaskArgs, TravelTimeArgs, UpdateTaskArgs
+    from planner.app.scheduler import DayPlan, Unscheduled
+    from planner.app.tools.args import (
+        AddTaskArgs,
+        CheckFeasibilityArgs,
+        DeleteTaskArgs,
+        PlanDayArgs,
+        TravelTimeArgs,
+        UpdateTaskArgs,
+    )
     from planner.domain.models import BaseData
 
 _GENERATED_ID = re.compile(r"T(\d+)")
@@ -85,6 +95,79 @@ def travel_time(state: SessionState, base: BaseData, args: TravelTimeArgs) -> To
             f"plus {leg.buffer_min} min buffer."
         )
     return ToolResult(state, message)
+
+
+def check_feasibility(
+    state: SessionState, base: BaseData, args: CheckFeasibilityArgs
+) -> ToolResult:
+    """Answer yes or no with the reasons; suggesting alternatives is left to the model."""
+    task = _existing(state, args.task_id)
+    result = feasibility.check_feasibility(
+        state, base, task, start=args.start, from_place=args.from_place
+    )
+    if result.feasible and result.arrive and result.finish:
+        message = (
+            f"{task.id} fits: arrive {result.arrive:%a %H:%M}, finish {result.finish:%a %H:%M}."
+        )
+    else:
+        message = f"{task.id} does not fit: {'; '.join(result.reasons)}."
+    return ToolResult(state, message)
+
+
+def plan_day(state: SessionState, base: BaseData, args: PlanDayArgs) -> ToolResult:
+    """Plan one day and describe the blocks, the total work and what was left out."""
+    plan = scheduler.plan_day(state, base, args.date)
+    lines = [f"Plan for {args.date:%a %Y-%m-%d}:"]
+    lines += [
+        f"{b.start:%H:%M}-{b.end:%H:%M} {b.task_id} {_existing(state, b.task_id).title}"
+        for b in plan.blocks
+    ]
+    if not plan.blocks:
+        lines.append("Nothing scheduled.")
+    lines.append(f"Planned work: {_work_minutes(state, plan)} min.")
+    lines += _unscheduled_lines(state, plan.unscheduled, "Not scheduled:")
+    return ToolResult(state, "\n".join(lines))
+
+
+def recommend_now(state: SessionState, base: BaseData) -> ToolResult:
+    """Recommend the most urgent task that can be started right now."""
+    rec = scheduler.recommend_now(state, base)
+    if rec.task_id is None or rec.arrive is None or rec.finish is None:
+        lines = ["Nothing can be done right now."]
+    else:
+        task = _existing(state, rec.task_id)
+        lines = [
+            f"Do {task.id} {task.title} now: arrive {rec.arrive:%H:%M}, finish {rec.finish:%H:%M}."
+        ]
+    lines += _unscheduled_lines(state, rec.skipped, "Ruled out:")
+    return ToolResult(state, "\n".join(lines))
+
+
+def _existing(state: SessionState, task_id: str) -> Task:
+    task = state.task(task_id)
+    if task is None:  # pragma: no cover - ids were checked by validation
+        msg = f"no task with id '{task_id}'"
+        raise LookupError(msg)
+    return task
+
+
+def _work_minutes(state: SessionState, plan: DayPlan) -> int:
+    return sum(
+        (b.end - b.start) // timedelta(minutes=1)
+        for b in plan.blocks
+        if _existing(state, b.task_id).type is not TaskType.FIXED_EVENT
+    )
+
+
+def _unscheduled_lines(
+    state: SessionState, items: tuple[Unscheduled, ...], heading: str
+) -> list[str]:
+    if not items:
+        return []
+    return [
+        heading,
+        *(f"{u.task_id} {_existing(state, u.task_id).title}: {u.reason}" for u in items),
+    ]
 
 
 def _next_id(state: SessionState) -> str:

@@ -4,8 +4,9 @@ A simplified least-laxity-first scheduler. Laxity (slack) is how much spare time
 
     slack = (deadline - now) - (duration + travel)
 
-It is computed when a task is placed, not continuously, and a task is never preempted. Tasks without a deadline have unlimited slack and
-come after those with one, ordered by duration according to `Pace.hardest_first`.
+It is computed when a task is placed, not continuously, and a task is never preempted. Tasks
+without a deadline have unlimited slack and come after those with one, ordered by duration
+according to `Pace.hardest_first`.
 
 Only flexible tasks are split into chunks; errands and fixed events are atomic. Fixed events
 are not scheduled but are treated as walls the other tasks are placed around.
