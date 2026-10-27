@@ -26,6 +26,11 @@ def load_base() -> BaseData:
     return BaseData.model_validate_json((_RESOURCES / "base.json").read_text("utf-8"))
 
 
+def load_rules() -> str:
+    """Load the fixed rules of the system prompt."""
+    return (_RESOURCES / "rules.md").read_text("utf-8")
+
+
 def load_persona(name: str) -> SessionState:
     """Load a sample persona's starting session state.
 

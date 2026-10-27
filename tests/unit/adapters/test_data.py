@@ -1,4 +1,9 @@
+from planner.adapters.data import load_rules
 from planner.domain.models import ANYWHERE, BaseData, Mode, SessionState, Weekday
+
+
+def test_rules_load_and_are_not_empty() -> None:
+    assert "planning assistant" in load_rules()
 
 
 def test_base_loads(base: BaseData) -> None:
