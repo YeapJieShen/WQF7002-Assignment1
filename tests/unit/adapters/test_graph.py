@@ -1,0 +1,120 @@
+from collections.abc import Iterator, Sequence
+from typing import Any
+
+import pytest
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langgraph.types import Command
+
+from planner.adapters.graph import DECLINED, GAVE_UP, build_graph
+from planner.domain.models import BaseData, SessionState
+
+CONFIG: Any = {"configurable": {"thread_id": "t"}}
+
+
+class ScriptedModel:
+    """Replies with the scripted messages in order; fails the test if asked for more."""
+
+    def __init__(self, *script: AIMessage) -> None:
+        self._script: Iterator[AIMessage] = iter(script)
+        self.calls = 0
+
+    def invoke(self, _messages: Sequence[AnyMessage], /) -> AIMessage:
+        self.calls += 1
+        return next(self._script)
+
+
+def call(name: str, args: dict[str, object], call_id: str = "c1") -> AIMessage:
+    return AIMessage("", tool_calls=[{"name": name, "args": args, "id": call_id}])
+
+
+def start(model: ScriptedModel, base: BaseData, state: SessionState, **kwargs: int) -> Any:
+    graph = build_graph(model, base, **kwargs)
+    first = graph.invoke(
+        {
+            "messages": [HumanMessage("hi")],
+            "session": state,
+            "pending": None,
+            "rejections": 0,
+        },
+        CONFIG,
+    )
+    return graph, first
+
+
+def tool_replies(result: Any) -> list[str]:
+    return [str(m.content) for m in result["messages"] if isinstance(m, ToolMessage)]
+
+
+def test_plain_reply_ends_the_turn(state: SessionState, base: BaseData) -> None:
+    _, result = start(ScriptedModel(AIMessage("Hello")), base, state)
+    assert result["messages"][-1].content == "Hello"
+    assert result["session"] == state
+
+
+def test_non_destructive_call_runs_without_asking(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
+    _, result = start(model, base, state)
+    assert "__interrupt__" not in result
+    assert result["session"].task("T6") is not None
+    assert "Added T6" in tool_replies(result)[0]
+
+
+def test_delete_pauses_until_confirmed_then_deletes(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
+    graph, first = start(model, base, state)
+    assert "Delete T4 Reply to supervisor?" in first["__interrupt__"][0].value
+    assert first["session"].task("T4") is not None
+    final = graph.invoke(Command(resume=True), CONFIG)
+    assert final["session"].task("T4") is None
+    assert final["messages"][-1].content == "Deleted."
+
+
+def test_declined_delete_changes_nothing(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "all"}), AIMessage("Kept them."))
+    graph, _ = start(model, base, state)
+    final = graph.invoke(Command(resume=False), CONFIG)
+    assert final["session"] == state
+    assert tool_replies(final) == [DECLINED]
+
+
+def test_rejected_call_is_reported_and_can_be_corrected(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(
+        call("delete_everything", {}),
+        call("add_task", {"title": "Post parcel"}),
+        AIMessage("Added."),
+    )
+    _, result = start(model, base, state)
+    replies = tool_replies(result)
+    assert replies[0].startswith("Rejected:")
+    assert "Added T6" in replies[1]
+    assert result["rejections"] == 0
+
+
+def test_malformed_call_is_rejected_visibly(state: SessionState, base: BaseData) -> None:
+    bad = AIMessage(
+        "",
+        invalid_tool_calls=[
+            {"name": "add_task", "args": "{oops", "id": "c1", "error": "bad json", "type": None}
+        ],
+    )
+    _, result = start(ScriptedModel(bad, AIMessage("Sorry.")), base, state)
+    assert tool_replies(result)[0].startswith("Rejected:")
+
+
+def test_repeated_rejections_stop_at_the_cap(state: SessionState, base: BaseData) -> None:
+    bad = [call("nope", {}, f"c{i}") for i in range(5)]
+    model = ScriptedModel(*bad)
+    _, result = start(model, base, state, max_rejections=3)
+    assert model.calls == 3
+    assert result["messages"][-1].content == GAVE_UP
+    assert result["rejections"] == 0
+    assert len(tool_replies(result)) == 3
+
+
+@pytest.mark.parametrize("cap", [1, 2])
+def test_cap_is_configurable(state: SessionState, base: BaseData, cap: int) -> None:
+    model = ScriptedModel(*[call("nope", {}, f"c{i}") for i in range(5)])
+    start(model, base, state, max_rejections=cap)
+    assert model.calls == cap
