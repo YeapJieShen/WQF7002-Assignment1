@@ -117,7 +117,7 @@ class RecommendNowArgs(ToolArgs):
 
 
 class PlanDayArgs(ToolArgs):
-    """Plan one day: prerequisites first, least slack first, travel buffers, pace, work cap."""
+    """Plan one day: prerequisites first, least slack first, travel buffers, pace, daily limit."""
 
     tool_name: ClassVar[str] = "plan_day"
 

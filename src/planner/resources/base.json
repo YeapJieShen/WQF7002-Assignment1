@@ -1,5 +1,5 @@
 {
-  "config": {"slot_min": 15, "horizon_days": 7, "daily_work_cap_min": 600, "min_break_min": 15},
+  "config": {"slot_min": 15, "horizon_days": 7, "min_break_min": 15, "max_chunk_min": 120, "day_start": "08:00", "day_end": "22:00"},
   "places": [
     {"id": "home", "name": "Home", "category": "home", "hours": []},
     {"id": "office", "name": "Office", "category": "work", "hours": [{"days": ["mon", "tue", "wed", "thu", "fri"], "opens": "08:00", "closes": "19:00"}]},
