@@ -1,25 +1,33 @@
+from datetime import date
+
 import pytest
 from pydantic import ValidationError
 
-from planner.domain.models import BaseData, OpeningWindow, Pace, Place, SessionState
+from planner.domain.models import BaseData, OpeningWindow, Pace, Place, SessionState, Weekday
 
 
 def test_base_data_is_immutable(base: BaseData) -> None:
     with pytest.raises(ValidationError):
-        base.config.daily_work_cap_min = 9999  # type: ignore[misc]
+        base.config.slot_min = 9999  # type: ignore[misc]
     with pytest.raises(ValidationError):
         base.places[0].name = "x"  # type: ignore[misc]
 
 
 def test_models_reject_unknown_fields() -> None:
     with pytest.raises(ValidationError):
-        Pace.model_validate({"density": 0.5, "speed": 1})
+        Pace.model_validate({"distribution": 0.5, "speed": 1})
 
 
 @pytest.mark.parametrize("value", [-0.1, 1.1])
 def test_pace_is_bounded(value: float) -> None:
     with pytest.raises(ValidationError):
-        Pace(density=value)
+        Pace(distribution=value)
+
+
+def test_pace_limit_uses_weekday_override() -> None:
+    pace = Pace(daily_limit_min=480, weekday_limit_min={Weekday.SAT: 120})
+    assert pace.limit_on(date(2026, 10, 31)) == 120  # Saturday
+    assert pace.limit_on(date(2026, 10, 30)) == 480  # Friday
 
 
 def test_unknown_weekday_rejected() -> None:
@@ -43,7 +51,14 @@ def test_horizon_end_is_seven_days_after_now(state: SessionState, base: BaseData
 
 
 def test_travel_table_with_unknown_place_rejected() -> None:
-    config = {"slot_min": 15, "horizon_days": 7, "daily_work_cap_min": 600, "min_break_min": 15}
+    config = {
+        "slot_min": 15,
+        "horizon_days": 7,
+        "min_break_min": 15,
+        "max_chunk_min": 120,
+        "day_start": "08:00",
+        "day_end": "22:00",
+    }
     data = {
         "config": config,
         "places": [{"id": "home", "name": "Home", "category": "home"}],

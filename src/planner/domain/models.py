@@ -5,7 +5,7 @@ Every entity is immutable: a change produces a new object instead of editing the
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 from functools import cached_property
 from typing import Annotated, Final, Self
@@ -158,14 +158,18 @@ class Config(Frozen):
     Attributes:
         slot_min: Length of one scheduling slot in minutes.
         horizon_days: How many days ahead the agent plans.
-        daily_work_cap_min: Maximum planned work per day, in minutes.
         min_break_min: Minimum break between work blocks, in minutes.
+        max_chunk_min: Longest single block a flexible task is split into, in minutes.
+        day_start: When the planning day begins.
+        day_end: When the planning day ends.
     """
 
     slot_min: int
     horizon_days: int
-    daily_work_cap_min: int
     min_break_min: int
+    max_chunk_min: int
+    day_start: time
+    day_end: time
 
     def horizon_end(self, now: datetime) -> datetime:
         """Return the last moment the agent plans for, counted from `now`."""
@@ -225,16 +229,31 @@ class BaseData(Frozen):
         return None
 
 
+Minutes = Annotated[int, Field(ge=0, le=24 * 60)]
+
+
 class Pace(Frozen):
-    """How busy the user wants their days. Changed only through the UI sliders.
+    """How the user wants their work paced. Changed only through the UI, never by the model.
 
     Attributes:
-        density: 0 for relaxed days up to 1 for packed days.
+        daily_limit_min: Most work to plan on a day, in minutes.
+        max_consecutive_min: Longest run of work before a long break; None turns this off.
+        long_break_min: Length of that long break, in minutes.
+        weekday_limit_min: Per-weekday replacements for `daily_limit_min`.
         distribution: 0 for work front-loaded up to 1 for work spread evenly.
+        hardest_first: Among tasks without a deadline, do longer ones first (else shorter first).
     """
 
-    density: Annotated[float, Field(ge=0, le=1)] = 0.5
+    daily_limit_min: Minutes = 480
+    max_consecutive_min: Minutes | None = 240
+    long_break_min: Minutes = 45
+    weekday_limit_min: dict[Weekday, Minutes] = {}
     distribution: Annotated[float, Field(ge=0, le=1)] = 0.5
+    hardest_first: bool = False
+
+    def limit_on(self, day: date) -> int:
+        """Return the most work, in minutes, to plan on this day."""
+        return self.weekday_limit_min.get(tuple(Weekday)[day.weekday()], self.daily_limit_min)
 
 
 class SessionState(Frozen):

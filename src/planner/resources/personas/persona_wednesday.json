@@ -2,7 +2,6 @@
   "now": "2026-10-28T15:40",
   "location": "office",
   "pace": {
-    "density": 0.5,
     "distribution": 0.5
   },
   "tasks": [
