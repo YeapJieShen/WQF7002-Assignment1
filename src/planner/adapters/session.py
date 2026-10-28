@@ -63,7 +63,8 @@ class Session:
 
     def send(self, text: str) -> Reply:
         """Send a user message and run the agent until it replies or needs a confirmation."""
-        message = {"messages": [HumanMessage(text)]}
+        # Any: later turns send only the new message, a partial update of the full AgentState.
+        message: Any = {"messages": [HumanMessage(text)]}
         if self._start is not None:
             message = {**message, "session": self._start, "pending": None, "rejections": 0}
             self._start = None
