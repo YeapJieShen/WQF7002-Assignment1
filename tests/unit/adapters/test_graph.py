@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator, Sequence
 from typing import Any
 
@@ -44,6 +45,7 @@ def start(model: ScriptedModel, base: BaseData, state: SessionState, **kwargs: i
             "session": state,
             "pending": None,
             "rejections": 0,
+            "call_log": [],
         },
         CONFIG,
     )
@@ -143,3 +145,44 @@ def test_prompt_is_rules_then_history_then_fresh_snapshot(
     assert "Post parcel" in str(second[-1].content)
     assert not any(isinstance(m, SystemMessage) for m in result["messages"])
     assert not any("Current session:" in str(m.content) for m in result["messages"])
+
+
+def test_call_log_records_an_accepted_call_through_to_its_result(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
+    _, result = start(model, base, state)
+    check, act = result["call_log"]
+    assert (check.stage, check.tool, check.outcome) == ("check", "add_task", "accepted")
+    assert json.loads(check.args) == {"title": "Post parcel"}
+    assert (act.stage, act.tool) == ("act", "add_task")
+    assert "Added T6" in act.outcome
+
+
+def test_call_log_records_rejections_including_malformed_calls(
+    state: SessionState, base: BaseData
+) -> None:
+    bad = AIMessage(
+        "",
+        invalid_tool_calls=[
+            {"name": "add_task", "args": "{oops", "id": "c1", "error": "bad json", "type": None}
+        ],
+    )
+    model = ScriptedModel(call("nope", {}), bad, AIMessage("Sorry."))
+    _, result = start(model, base, state)
+    unknown, malformed = result["call_log"]
+    assert unknown.outcome.startswith("rejected:")
+    assert (malformed.tool, malformed.args) == ("add_task", "{oops")
+    assert malformed.outcome.startswith("rejected:")
+
+
+@pytest.mark.parametrize(("approved", "outcome"), [(True, "approved"), (False, "declined")])
+def test_call_log_records_the_users_answer(
+    state: SessionState, base: BaseData, *, approved: bool, outcome: str
+) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Done."))
+    graph, _ = start(model, base, state)
+    final = graph.invoke(Command(resume=approved), CONFIG)
+    stages = [(r.stage, r.outcome) for r in final["call_log"]]
+    assert stages[:2] == [("check", "accepted"), ("confirm", outcome)]
+    assert (len(stages) == 3) is approved

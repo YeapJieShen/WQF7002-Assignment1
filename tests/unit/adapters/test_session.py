@@ -61,3 +61,23 @@ def test_declining_keeps_the_task(state: SessionState, base: BaseData) -> None:
     session.send("delete T4")
     session.resume(approved=False)
     assert session.state == state
+
+
+def test_call_log_is_empty_until_a_tool_is_called(state: SessionState, base: BaseData) -> None:
+    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state)
+    assert session.call_log == []
+    session.send("hi")
+    assert session.call_log == []
+
+
+def test_call_log_accumulates_across_turns(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(
+        call("add_task", {"title": "A"}),
+        AIMessage("One."),
+        call("add_task", {"title": "B"}),
+        AIMessage("Two."),
+    )
+    session = Session(model, base, "rules", state)
+    session.send("first")
+    session.send("second")
+    assert [r.stage for r in session.call_log] == ["check", "act", "check", "act"]

@@ -6,7 +6,9 @@ Resume value for a paused confirmation is a bool: True runs the call, anything e
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict
+import json
+import operator
+from typing import TYPE_CHECKING, Annotated, Literal, Protocol, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -15,6 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
+from planner.app.calls import CallRecord
 from planner.app.guardrails import confirmation_question
 from planner.app.prompt import session_snapshot
 from planner.app.tools.args import TOOLS_BY_NAME, TaskPatch, ToolArgs
@@ -40,6 +43,7 @@ DEFAULT_MAX_REJECTIONS = 3
 _SERDE = JsonPlusSerializer(
     allowed_msgpack_modules=[
         SessionState,
+        CallRecord,
         Task,
         Pace,
         TaskType,
@@ -68,12 +72,14 @@ class AgentState(TypedDict):
         session: The user's tasks, location and clock.
         pending: A validated call waiting to run, if any.
         rejections: Consecutive rejected calls; reset by any accepted call or plain reply.
+        call_log: Every stage every tool call has passed through, oldest first.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
     session: SessionState
     pending: ToolArgs | None
     rejections: int
+    call_log: Annotated[list[CallRecord], operator.add]
 
 
 def build_graph(
@@ -128,18 +134,28 @@ class _Steps:
 
     def check(self, state: AgentState) -> dict[str, object]:
         last = _last_ai(state)
+        args: object
         if last.tool_calls:
             call = last.tool_calls[0]
             verdict = validate_call(call["name"], call["args"], state["session"], self._base)
             call_id = call["id"]
+            tool, args = call["name"], call["args"]
         else:
             bad = last.invalid_tool_calls[0]
             verdict = reject_malformed(bad["name"], bad["error"] or "")
             call_id = bad["id"]
+            tool, args = bad["name"] or "", bad["args"]
         if isinstance(verdict, Accepted):
-            return {"pending": verdict.args, "rejections": 0}
+            entry = _record("check", tool, args, "accepted")
+            return {"pending": verdict.args, "rejections": 0, "call_log": [entry]}
+        entry = _record("check", tool, args, f"rejected: {verdict.message()}")
         reply = ToolMessage(f"Rejected: {verdict.message()}", tool_call_id=call_id or "")
-        return {"messages": [reply], "pending": None, "rejections": state["rejections"] + 1}
+        return {
+            "messages": [reply],
+            "pending": None,
+            "rejections": state["rejections"] + 1,
+            "call_log": [entry],
+        }
 
     def confirm(self, state: AgentState) -> dict[str, object]:
         pending = state["pending"]
@@ -147,9 +163,17 @@ class _Steps:
             return {}
         question = confirmation_question(pending, state["session"])
         # interrupt() must stay first: on resume this node runs again from the top.
-        if question is not None and interrupt(question) is not True:
-            return {"messages": [_tool_reply(state, DECLINED)], "pending": None}
-        return {}
+        if question is None:
+            return {}
+        approved = interrupt(question) is True
+        entry = _logged(state, "confirm", "approved" if approved else "declined")
+        if approved:
+            return {"call_log": [entry]}
+        return {
+            "messages": [_tool_reply(state, DECLINED)],
+            "pending": None,
+            "call_log": [entry],
+        }
 
     def act(self, state: AgentState) -> dict[str, object]:
         pending = state["pending"]
@@ -160,6 +184,7 @@ class _Steps:
             "session": result.state,
             "messages": [_tool_reply(state, result.message)],
             "pending": None,
+            "call_log": [_logged(state, "act", result.message)],
         }
 
     def give_up(self, state: AgentState) -> dict[str, object]:  # noqa: ARG002 - node signature
@@ -184,6 +209,18 @@ def _last_ai(state: AgentState) -> AIMessage:
         msg = f"expected an assistant message, got {type(last).__name__}"
         raise TypeError(msg)
     return last
+
+
+def _record(
+    stage: Literal["check", "confirm", "act"], tool: str, args: object, outcome: str
+) -> CallRecord:
+    text = args if isinstance(args, str) else json.dumps(args, default=str)
+    return CallRecord(stage=stage, tool=tool, args=text, outcome=outcome)
+
+
+def _logged(state: AgentState, stage: Literal["confirm", "act"], outcome: str) -> CallRecord:
+    call = _last_ai(state).tool_calls[0]
+    return _record(stage, call["name"], call["args"], outcome)
 
 
 def _tool_reply(state: AgentState, content: str) -> ToolMessage:
