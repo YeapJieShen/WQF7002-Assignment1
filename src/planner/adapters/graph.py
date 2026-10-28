@@ -8,17 +8,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
 from planner.app.guardrails import confirmation_question
-from planner.app.tools.args import ToolArgs  # noqa: TC001 - LangGraph reads annotations at runtime
+from planner.app.prompt import session_snapshot
+from planner.app.tools.args import TOOLS_BY_NAME, TaskPatch, ToolArgs
 from planner.app.tools.dispatch import run_tool
 from planner.app.validation import Accepted, reject_malformed, validate_call
-from planner.domain.models import SessionState  # noqa: TC001 - LangGraph reads annotations at runtime
+from planner.domain.models import (
+    Pace,
+    SessionState,
+    Task,
+    TaskStatus,
+    TaskType,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,6 +36,18 @@ if TYPE_CHECKING:
     from planner.domain.models import BaseData
 
 DEFAULT_MAX_REJECTIONS = 3
+# Only our own state types may be rebuilt from a checkpoint; LangGraph will block the rest.
+_SERDE = JsonPlusSerializer(
+    allowed_msgpack_modules=[
+        SessionState,
+        Task,
+        Pace,
+        TaskType,
+        TaskStatus,
+        TaskPatch,
+        *TOOLS_BY_NAME.values(),
+    ]
+)
 GAVE_UP = "I could not complete that request. Please rephrase it or try something simpler."
 DECLINED = "The user declined, so nothing was changed."
 
@@ -57,19 +77,20 @@ class AgentState(TypedDict):
 
 
 def build_graph(
-    model: Model, base: BaseData, *, max_rejections: int = DEFAULT_MAX_REJECTIONS
+    model: Model, base: BaseData, rules: str, *, max_rejections: int = DEFAULT_MAX_REJECTIONS
 ) -> CompiledStateGraph[AgentState, None, AgentState, AgentState]:
     """Assemble and compile the agent graph.
 
     Args:
         model: Produces the assistant messages.
         base: The read-only reference data.
+        rules: The fixed system prompt, sent first on every model call.
         max_rejections: How many rejected calls in a row end the turn with an apology.
 
     Returns:
         A compiled graph with an in-memory checkpointer, so a confirmation can pause and resume.
     """
-    steps = _Steps(model, base, max_rejections)
+    steps = _Steps(model, base, rules, max_rejections)
     graph: StateGraph[AgentState, None, AgentState, AgentState] = StateGraph(AgentState)
     graph.add_node("call_model", steps.call_model)
     graph.add_node("check", steps.check)
@@ -82,19 +103,26 @@ def build_graph(
     graph.add_conditional_edges("confirm", steps.after_confirm, ["act", "call_model"])
     graph.add_edge("act", "call_model")
     graph.add_edge("give_up", END)
-    return graph.compile(checkpointer=InMemorySaver())
+    return graph.compile(checkpointer=InMemorySaver(serde=_SERDE))
 
 
 class _Steps:
     """The graph's nodes and routing functions, sharing the model, data and cap."""
 
-    def __init__(self, model: Model, base: BaseData, max_rejections: int) -> None:
+    def __init__(self, model: Model, base: BaseData, rules: str, max_rejections: int) -> None:
         self._model = model
         self._base = base
+        self._rules = rules
         self._max_rejections = max_rejections
 
     def call_model(self, state: AgentState) -> dict[str, object]:
-        reply = self._model.invoke(state["messages"])
+        # Rules and snapshot are rebuilt on every call and never stored in `messages`.
+        prompt = [
+            SystemMessage(self._rules),
+            *state["messages"],
+            HumanMessage(session_snapshot(state["session"], self._base)),
+        ]
+        reply = self._model.invoke(prompt)
         asked = reply.tool_calls or reply.invalid_tool_calls
         return {"messages": [reply], "rejections": state["rejections"] if asked else 0}
 

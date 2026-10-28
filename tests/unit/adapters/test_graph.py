@@ -2,13 +2,20 @@ from collections.abc import Iterator, Sequence
 from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.types import Command
 
 from planner.adapters.graph import DECLINED, GAVE_UP, build_graph
 from planner.domain.models import BaseData, SessionState
 
 CONFIG: Any = {"configurable": {"thread_id": "t"}}
+RULES = "Be brief."
 
 
 class ScriptedModel:
@@ -17,9 +24,11 @@ class ScriptedModel:
     def __init__(self, *script: AIMessage) -> None:
         self._script: Iterator[AIMessage] = iter(script)
         self.calls = 0
+        self.prompts: list[list[AnyMessage]] = []
 
-    def invoke(self, _messages: Sequence[AnyMessage], /) -> AIMessage:
+    def invoke(self, messages: Sequence[AnyMessage], /) -> AIMessage:
         self.calls += 1
+        self.prompts.append(list(messages))
         return next(self._script)
 
 
@@ -28,7 +37,7 @@ def call(name: str, args: dict[str, object], call_id: str = "c1") -> AIMessage:
 
 
 def start(model: ScriptedModel, base: BaseData, state: SessionState, **kwargs: int) -> Any:
-    graph = build_graph(model, base, **kwargs)
+    graph = build_graph(model, base, RULES, **kwargs)
     first = graph.invoke(
         {
             "messages": [HumanMessage("hi")],
@@ -118,3 +127,19 @@ def test_cap_is_configurable(state: SessionState, base: BaseData, cap: int) -> N
     model = ScriptedModel(*[call("nope", {}, f"c{i}") for i in range(5)])
     start(model, base, state, max_rejections=cap)
     assert model.calls == cap
+
+
+def test_prompt_is_rules_then_history_then_fresh_snapshot(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
+    _, result = start(model, base, state)
+    first, second = model.prompts
+    assert isinstance(first[0], SystemMessage)
+    assert first[0].content == RULES
+    assert first[1].content == "hi"
+    assert "Current session:" in str(first[-1].content)
+    assert "Post parcel" not in str(first[-1].content)
+    assert "Post parcel" in str(second[-1].content)
+    assert not any(isinstance(m, SystemMessage) for m in result["messages"])
+    assert not any("Current session:" in str(m.content) for m in result["messages"])
