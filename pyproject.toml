@@ -16,6 +16,9 @@ dependencies = [
     "pydantic-settings",
 ]
 
+[project.scripts]
+planner = "planner.__main__:main"
+
 [dependency-groups]
 dev = [
     "hypothesis",
