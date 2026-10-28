@@ -1,9 +1,12 @@
 from collections.abc import Iterator, Sequence
+from datetime import datetime
+from typing import Any
 
+import pytest
 from langchain_core.messages import AIMessage, AnyMessage
 
 from planner.adapters.session import Reply, Session
-from planner.domain.models import BaseData, SessionState
+from planner.domain.models import BaseData, Pace, SessionState
 
 
 class ScriptedModel:
@@ -81,3 +84,57 @@ def test_call_log_accumulates_across_turns(state: SessionState, base: BaseData) 
     session.send("first")
     session.send("second")
     assert [r.stage for r in session.call_log] == ["check", "act", "check", "act"]
+
+
+def changes(state: SessionState) -> dict[str, Any]:
+    return {
+        "now": datetime(2026, 11, 20, 9, 0),
+        "location": next(p for p in ("home", "office") if p != state.location),
+        "pace": Pace(daily_limit_min=120),
+    }
+
+
+@pytest.mark.parametrize("field", ["now", "location", "pace"])
+@pytest.mark.parametrize("started", [False, True])
+def test_update_session_changes_only_that_field(
+    state: SessionState, base: BaseData, field: str, *, started: bool
+) -> None:
+    session = Session(ScriptedModel(AIMessage("Hi")), base, "rules", state)
+    if started:
+        session.send("hi")
+    value = changes(state)[field]
+    session.update_session(**{field: value})
+    expected = state.model_copy(update={field: value})
+    assert session.state == expected
+
+
+def test_update_session_shows_in_the_next_prompt_and_keeps_history(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("add_task", {"title": "A"}), AIMessage("One."), AIMessage("Two."))
+    session = Session(model, base, "rules", state)
+    session.send("first")
+    log = session.call_log
+    session.update_session(pace=Pace(daily_limit_min=120))
+    session.send("second")
+    assert session.call_log == log
+    assert session.state.task("T6") is not None
+    assert session.state.pace.daily_limit_min == 120
+
+
+def test_update_session_rejects_an_unknown_place(state: SessionState, base: BaseData) -> None:
+    session = Session(ScriptedModel(), base, "rules", state)
+    with pytest.raises(ValueError, match="unknown place"):
+        session.update_session(location="narnia")
+
+
+def test_update_session_waits_for_a_pending_confirmation(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Kept."))
+    session = Session(model, base, "rules", state)
+    session.send("delete T4")
+    with pytest.raises(RuntimeError, match="pending confirmation"):
+        session.update_session(pace=Pace(daily_limit_min=120))
+    session.resume(approved=False)
+    session.update_session(pace=Pace(daily_limit_min=120))
