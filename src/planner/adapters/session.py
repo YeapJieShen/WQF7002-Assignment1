@@ -13,6 +13,7 @@ from planner.adapters.graph import DEFAULT_MAX_REJECTIONS, build_graph
 
 if TYPE_CHECKING:
     from planner.adapters.graph import Model
+    from planner.app.calls import CallRecord
     from planner.domain.models import BaseData, SessionState
 
 
@@ -60,6 +61,11 @@ class Session:
         if self._start is not None:
             return self._start
         return self._graph.get_state(self._config).values["session"]  # type: ignore[no-any-return]
+
+    @property
+    def call_log(self) -> list[CallRecord]:
+        """Every stage every tool call has passed through, oldest first."""
+        return list(self._graph.get_state(self._config).values.get("call_log", []))
 
     def send(self, text: str) -> Reply:
         """Send a user message and run the agent until it replies or needs a confirmation."""
