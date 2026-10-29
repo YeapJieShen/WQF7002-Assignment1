@@ -31,6 +31,15 @@ def load_rules() -> str:
     return (_RESOURCES / "rules.md").read_text("utf-8")
 
 
+def list_personas() -> list[str]:
+    """List the names of the sample personas, in alphabetical order."""
+    return sorted(
+        p.name.removesuffix(".json")
+        for p in (_RESOURCES / "personas").iterdir()
+        if p.name.endswith(".json")
+    )
+
+
 def load_persona(name: str) -> SessionState:
     """Load a sample persona's starting session state.
 
