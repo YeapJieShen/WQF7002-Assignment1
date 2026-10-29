@@ -1,4 +1,4 @@
-from planner.adapters.data import load_rules
+from planner.adapters.data import list_personas, load_rules
 from planner.domain.models import ANYWHERE, BaseData, Mode, SessionState, Weekday
 
 
@@ -56,3 +56,7 @@ def test_leg_same_place_is_zero(base: BaseData) -> None:
     leg = base.leg("um", "um", Mode.DRIVE)
     assert leg is not None
     assert leg.minutes == 0
+
+
+def test_personas_are_listed_by_file_name() -> None:
+    assert "persona_wednesday" in list_personas()

@@ -1,4 +1,5 @@
 from collections.abc import Iterator, Sequence
+from datetime import datetime
 from typing import Any
 
 import gradio as gr
@@ -11,10 +12,12 @@ from planner.adapters.session import Session
 from planner.adapters.ui import (
     BACKEND_DOWN,
     answer,
+    apply,
     build_app,
     default_session,
     send,
     start,
+    switch,
     task_rows,
 )
 from planner.domain.models import BaseData, SessionState
@@ -48,11 +51,52 @@ def test_task_rows_describe_each_task(state: SessionState) -> None:
     assert all(len(r) == 7 for r in rows)
 
 
-def test_start_shows_the_starting_tasks(state: SessionState, base: BaseData) -> None:
-    session, tasks, log = start(lambda: make(ScriptedModel(), state, base))
+def test_start_shows_the_starting_tasks_and_settings(state: SessionState, base: BaseData) -> None:
+    session, tasks, log, clock, location, daily, spread, hardest = start(
+        lambda _: make(ScriptedModel(), state, base), "any"
+    )
     assert tasks == task_rows(state)
     assert log == []
     assert session.state == state
+    assert clock == f"{state.now:%Y-%m-%d %H:%M}"
+    assert location == state.location
+    assert (daily, spread, hardest) == (
+        state.pace.daily_limit_min,
+        state.pace.distribution,
+        state.pace.hardest_first,
+    )
+
+
+def test_switching_persona_starts_afresh(state: SessionState, base: BaseData) -> None:
+    out = switch(lambda _: make(ScriptedModel(), state, base), "any")
+    assert out[-3] == []
+    assert out[-2]["visible"] is False
+    assert out[-1]["interactive"] is True
+
+
+def test_apply_updates_the_session(state: SessionState, base: BaseData) -> None:
+    session = make(ScriptedModel(), state, base)
+    place = next(p for p in base.place_ids if p != state.location)
+    apply("2026-10-29 09:00", place, 300, 0.2, hardest_first=True, session=session)
+    assert session.state.now == datetime(2026, 10, 29, 9, 0)
+    assert session.state.location == place
+    assert session.state.pace.daily_limit_min == 300
+    assert session.state.pace.hardest_first is True
+
+
+def test_apply_rejects_a_bad_clock(state: SessionState, base: BaseData) -> None:
+    session = make(ScriptedModel(), state, base)
+    with pytest.raises(gr.Error, match="must look like"):
+        apply("tomorrow", state.location, 300, 0.5, hardest_first=False, session=session)
+
+
+def test_apply_reports_a_refusal(state: SessionState, base: BaseData) -> None:
+    session = make(ScriptedModel(), state, base)
+    with pytest.raises(gr.Error, match="unknown place"):
+        apply("2026-10-29 09:00", "mars", 300, 0.5, hardest_first=False, session=session)
+
+    with pytest.raises(gr.Error, match="Reload the page"):
+        apply("2026-10-29 09:00", "home", 300, 0.5, hardest_first=False, session=None)
 
 
 def test_send_appends_both_sides_and_refreshes_the_tables(
@@ -97,7 +141,7 @@ def test_backend_failure_becomes_a_visible_error(state: SessionState, base: Base
 
 
 def test_build_app_lays_out_without_launching(state: SessionState, base: BaseData) -> None:
-    assert isinstance(build_app(lambda: make(ScriptedModel(), state, base)), gr.Blocks)
+    assert isinstance(build_app(lambda _: make(ScriptedModel(), state, base)), gr.Blocks)
 
 
 def test_default_session_builds_without_calling_a_model() -> None:
