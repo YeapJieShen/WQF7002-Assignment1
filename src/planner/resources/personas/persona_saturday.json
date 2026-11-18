@@ -1,0 +1,77 @@
+{
+  "now": "2026-10-31T09:30",
+  "location": "home",
+  "pace": {
+    "daily_limit_min": 300,
+    "distribution": 0.0,
+    "hardest_first": true
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Post birthday parcel",
+      "type": "errand",
+      "duration_min": 15,
+      "deadline": "2026-10-31T12:30",
+      "place": "post_office",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T2",
+      "title": "Return library books",
+      "type": "errand",
+      "duration_min": 20,
+      "deadline": "2026-10-31T17:00",
+      "place": "library",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "Collect prescription",
+      "type": "errand",
+      "duration_min": 15,
+      "deadline": "2026-11-01T21:00",
+      "place": "pharmacy",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "Study for Monday quiz",
+      "type": "flexible",
+      "duration_min": 240,
+      "deadline": "2026-11-02T09:00",
+      "place": "anywhere",
+      "earliest_start": null,
+      "prerequisites": [],
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "Write quiz cheat sheet",
+      "type": "flexible",
+      "duration_min": 60,
+      "deadline": "2026-11-02T09:00",
+      "place": "anywhere",
+      "earliest_start": null,
+      "prerequisites": ["T4"],
+      "status": "todo"
+    },
+    {
+      "id": "E1",
+      "title": "Family dinner",
+      "type": "fixed_event",
+      "duration_min": 120,
+      "deadline": null,
+      "place": "home",
+      "earliest_start": "2026-10-31T19:00",
+      "prerequisites": [],
+      "status": "todo"
+    }
+  ]
+}
