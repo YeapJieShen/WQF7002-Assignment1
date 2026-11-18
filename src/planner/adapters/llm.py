@@ -31,7 +31,7 @@ type ChatRunnable = Runnable[LanguageModelInput, AIMessage]
 
 
 def tool_specs() -> list[dict[str, Any]]:
-    """Describe the seven tools in the OpenAI function format, named by `tool_name`."""
+    """Describe the tools in the OpenAI function format, named by `tool_name`."""
     return [
         {
             "type": "function",
@@ -66,7 +66,7 @@ def chain(models: Sequence[ChatRunnable]) -> ChatRunnable:
 
 
 def client(endpoint: Endpoint) -> ChatRunnable:
-    """Build the chat client for one endpoint, with the seven tools bound.
+    """Build the chat client for one endpoint, with the tools bound.
 
     The model may answer in text or call one tool; it is never forced to call one.
     """

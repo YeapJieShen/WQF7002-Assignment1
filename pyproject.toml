@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "personal-resource-planner"
 version = "0.1.0"
 description = "Planning delegate: an intelligent agent that knows its limits"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "gradio[oauth]",
     "langgraph",
@@ -45,7 +45,7 @@ planner = ["py.typed", "resources/**/*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -78,7 +78,7 @@ runtime-evaluated-base-classes = [
 convention = "google"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
