@@ -90,7 +90,11 @@ def check_feasibility(  # noqa: PLR0913 - one argument per input the check depen
 
     place = base.place(task.place)
     if place is not None and not place.is_open_during(begin, finish):
-        reasons.append(f"{place.name} is not open {begin:%a %H:%M}-{finish:%H:%M}")
+        # State the real hours: "not open 17:45-19:45" was misread by models as the hours.
+        reasons.append(
+            f"{place.name} opening hours on {begin:%a}: {place.hours_on(begin.date())}; "
+            f"the visit would need {begin:%H:%M}-{finish:%H:%M}"
+        )
     if task.deadline is not None and finish > task.deadline:
         reasons.append(
             f"would finish {finish:%a %H:%M}, after the deadline {task.deadline:%a %H:%M}"
