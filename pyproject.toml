@@ -56,6 +56,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "ANN", "D", "SLF001", "DTZ"]  # DTZ: times are naive by design
+"scripts/**" = ["INP001", "T201"]  # standalone scripts run by path and print progress
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = [
