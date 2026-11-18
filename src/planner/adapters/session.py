@@ -139,7 +139,7 @@ class Session:
         if location is not None and location not in self._base.place_ids:
             msg = f"unknown place: {location}"
             raise ValueError(msg)
-        if self._start is None and self._graph.get_state(self._config).next:
+        if self._start is None and self._graph.get_state(self._config).interrupts:
             msg = "answer the pending confirmation first"
             raise RuntimeError(msg)
         changes = {"now": now, "location": location, "pace": pace}
