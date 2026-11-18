@@ -1,5 +1,5 @@
+import inspect
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
 
 import gradio as gr
 import httpx2
@@ -11,6 +11,7 @@ from langchain_core.runnables import RunnableLambda
 from pydantic import SecretStr
 
 from planner.adapters import zerogpu
+from planner.adapters.backend import Backend
 from planner.adapters.backends import (
     BACKEND_DOWN,
     BILLING,
@@ -24,9 +25,6 @@ from planner.adapters.backends import (
 from planner.adapters.config import Endpoint, Settings
 from planner.adapters.session import Session, Token, Usage
 from planner.domain.models import BaseData, SessionState
-
-if TYPE_CHECKING:
-    from planner.adapters.backend import Backend
 
 KEY = "sk-secret-0123456789"
 CUSTOM = Endpoint(
@@ -59,9 +57,14 @@ def gpu() -> AppBackend:
     return AppBackend(DEFAULT, zerogpu=True)
 
 
-def test_it_is_a_backend() -> None:
-    backend: Backend = local()
-    assert backend.model(None) is DEFAULT
+@pytest.mark.parametrize("name", ["model", "explain", "cost"])
+def test_it_matches_the_backend_seam(name: str) -> None:
+    ours, seam = getattr(AppBackend, name), getattr(Backend, name)
+    assert inspect.signature(ours) == inspect.signature(seam)
+
+
+def test_the_default_model_is_used_without_an_endpoint() -> None:
+    assert local().model(None) is DEFAULT
 
 
 # --- model ---------------------------------------------------------------------------------
