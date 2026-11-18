@@ -19,11 +19,13 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from planner.adapters.backends import build_backend
 from planner.adapters.config import Settings
 from planner.adapters.data import load_base, load_persona, load_rules
-from planner.adapters.llm import BACKEND_ERRORS, build_model
+from planner.adapters.llm import BACKEND_ERRORS
 from planner.adapters.session import Session
 from planner.adapters.ui import PERSONA, forwarded
+from planner.adapters.zerogpu import MODEL_ID
 from planner.app.calls import CallRecord
 
 if TYPE_CHECKING:
@@ -35,7 +37,7 @@ if TYPE_CHECKING:
 def default_session(state: SessionState | None = None) -> Session:
     """Start a conversation with the configured model, from `state` or the sample persona."""
     start = state or load_persona(PERSONA)
-    return Session(build_model(Settings()), load_base(), load_rules(), start)
+    return Session(build_backend(Settings()).model(None), load_base(), load_rules(), start)
 
 
 class Case(BaseModel):
@@ -151,6 +153,8 @@ def to_markdown(outcomes: Sequence[Outcome], backend: str) -> str:
 
 def backend_label(settings: Settings) -> str:
     """Name the configured backends, best first."""
+    if settings.backend == "zerogpu":
+        return f"zerogpu ({MODEL_ID})"
     return " -> ".join(f"{e.name} ({e.model})" for e in settings.llm_endpoints)
 
 
