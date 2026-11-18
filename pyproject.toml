@@ -28,6 +28,12 @@ dev = [
     "pytest-cov",
     "ruff",
 ]
+# What the ZeroGPU Space adds (space/requirements.txt pins it); never needed for tests or CI.
+space = [
+    "spaces",
+    "torch",
+    "transformers>=4.56",  # Qwen3 support and the `dtype` argument
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -75,6 +81,11 @@ plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+
+[[tool.mypy.overrides]]
+# Space-only libraries, imported lazily in adapters/zerogpu.py; not installed for type checks.
+module = ["spaces", "transformers"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
