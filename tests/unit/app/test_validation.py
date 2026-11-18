@@ -10,6 +10,7 @@ from planner.app.tools.args import (
     DeleteTaskArgs,
     PlanDayArgs,
     RecommendNowArgs,
+    SetLocationArgs,
     TravelTimeArgs,
     UpdateTaskArgs,
 )
@@ -42,6 +43,7 @@ from tests.conftest import Codes
             None,
         ),
         ("plan_day", {"date": "2026-10-29"}, PlanDayArgs),
+        ("set_location", {"place_id": "library"}, SetLocationArgs),
         ("delete_task", {"task_id": "T4"}, DeleteTaskArgs),
         ("delete_task", {"task_id": "all"}, DeleteTaskArgs),
         ("update_task", {"task_id": "T4", "fields": {"status": "done"}}, UpdateTaskArgs),
@@ -199,6 +201,11 @@ def test_anywhere_is_not_a_travel_endpoint(codes: Codes) -> None:
 def test_feasibility_origin_must_be_known(codes: Codes) -> None:
     args = {"task_id": "T2", "start": "2026-10-28T17:15", "from_place": "mars"}
     assert codes("check_feasibility", args) == [ErrorCode.UNKNOWN_PLACE]
+
+
+def test_set_location_needs_a_known_place(codes: Codes) -> None:
+    assert codes("set_location", {"place_id": "mars"}) == [ErrorCode.UNKNOWN_PLACE]
+    assert codes("set_location", {"place_id": "anywhere"}) == [ErrorCode.UNKNOWN_PLACE]
 
 
 def test_unknown_task_on_delete(codes: Codes) -> None:

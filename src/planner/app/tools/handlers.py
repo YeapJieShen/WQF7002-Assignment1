@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         CheckFeasibilityArgs,
         DeleteTaskArgs,
         PlanDayArgs,
+        SetLocationArgs,
         TravelTimeArgs,
         UpdateTaskArgs,
     )
@@ -141,6 +142,14 @@ def recommend_now(state: SessionState, base: BaseData) -> ToolResult:
         ]
     lines += _unscheduled_lines(state, rec.skipped, "Ruled out:")
     return ToolResult(state, "\n".join(lines))
+
+
+def set_location(state: SessionState, base: BaseData, args: SetLocationArgs) -> ToolResult:
+    """Move the user to a known place; travel from then on is counted from there."""
+    place = base.place(args.place_id)
+    name = place.name if place else args.place_id
+    moved = state.model_copy(update={"location": args.place_id})
+    return ToolResult(moved, f"The user is now at {name} ({args.place_id}).")
 
 
 def _existing(state: SessionState, task_id: str) -> Task:

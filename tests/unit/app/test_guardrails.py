@@ -13,6 +13,7 @@ CALLS: dict[str, dict[str, object]] = {
     "check_feasibility": {"task_id": "T3", "start": "2026-10-28T15:40", "from_place": "office"},
     "recommend_now": {},
     "plan_day": {"date": "2026-10-29"},
+    "set_location": {"place_id": "home"},
 }
 
 

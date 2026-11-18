@@ -11,6 +11,7 @@ from planner.app.tools.args import (
     DeleteTaskArgs,
     PlanDayArgs,
     RecommendNowArgs,
+    SetLocationArgs,
     ToolArgs,
     TravelTimeArgs,
     UpdateTaskArgs,
@@ -47,6 +48,8 @@ def run_tool(args: ToolArgs, state: SessionState, base: BaseData) -> ToolResult:
             return handlers.plan_day(state, base, args)
         case RecommendNowArgs():
             return handlers.recommend_now(state, base)
+        case SetLocationArgs():
+            return handlers.set_location(state, base, args)
         case _:  # pragma: no cover - every registered tool is handled above
             msg = f"unhandled tool: {type(args).__name__}"
             raise AssertionError(msg)

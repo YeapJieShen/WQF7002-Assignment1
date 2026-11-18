@@ -8,7 +8,7 @@ from planner.app.tools.args import (
 )
 
 
-def test_exactly_the_seven_tools() -> None:
+def test_exactly_the_eight_tools() -> None:
     assert set(TOOLS_BY_NAME) == {
         "add_task",
         "update_task",
@@ -17,6 +17,7 @@ def test_exactly_the_seven_tools() -> None:
         "check_feasibility",
         "recommend_now",
         "plan_day",
+        "set_location",
     }
 
 

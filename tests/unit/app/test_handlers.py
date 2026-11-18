@@ -5,6 +5,7 @@ from planner.app.tools.args import (
     CheckFeasibilityArgs,
     DeleteTaskArgs,
     PlanDayArgs,
+    SetLocationArgs,
     TaskPatch,
     TravelTimeArgs,
     UpdateTaskArgs,
@@ -15,6 +16,7 @@ from planner.app.tools.handlers import (
     delete_task,
     plan_day,
     recommend_now,
+    set_location,
     travel_time,
     update_task,
 )
@@ -141,3 +143,18 @@ def test_recommend_now_names_the_task_and_what_was_ruled_out(
 def test_recommend_now_when_nothing_is_possible(state: SessionState, base: BaseData) -> None:
     only_car = state.with_tasks(tuple(t for t in state.tasks if t.id == "T2"))
     assert recommend_now(only_car, base).message.startswith("Nothing can be done right now.")
+
+
+def test_set_location_moves_the_user_and_keeps_the_tasks(
+    state: SessionState, base: BaseData
+) -> None:
+    result = set_location(state, base, SetLocationArgs(place_id="library"))
+    assert result.state.location == "library"
+    assert result.state.tasks == state.tasks
+    assert result.message == "The user is now at Faculty library (library)."
+
+
+def test_set_location_names_an_unlisted_place_by_its_id(
+    state: SessionState, base: BaseData
+) -> None:
+    assert "(mars)" in set_location(state, base, SetLocationArgs(place_id="mars")).message
