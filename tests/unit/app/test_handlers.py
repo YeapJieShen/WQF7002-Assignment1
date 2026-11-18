@@ -103,7 +103,7 @@ def test_check_feasibility_says_no_with_reasons(state: SessionState, base: BaseD
     )
     message = check_feasibility(state, base, args).message
     assert message.startswith("T2 does not fit")
-    assert "not open" in message
+    assert "opening hours on Wed: 09:00-18:00" in message
 
 
 def test_check_feasibility_says_yes_with_times(state: SessionState, base: BaseData) -> None:

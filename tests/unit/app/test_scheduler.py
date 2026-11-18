@@ -236,7 +236,7 @@ def test_recommend_now_picks_least_slack(state: SessionState, base: BaseData) ->
     assert rec.task_id == "T4"
     assert rec.arrive == state.now
     assert {u.task_id for u in rec.skipped} == {"T2"}
-    assert "not open" in rec.skipped[0].reason
+    assert "opening hours on Wed: 09:00-18:00" in rec.skipped[0].reason
 
 
 def test_recommend_now_with_nothing_feasible(state: SessionState, base: BaseData) -> None:

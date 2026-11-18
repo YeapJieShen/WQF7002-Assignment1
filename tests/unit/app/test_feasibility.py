@@ -24,13 +24,15 @@ def test_car_service_today_does_not_fit(state: SessionState, base: BaseData) -> 
     result = _check(state, base, "T2")
     assert not result.feasible
     assert result.finish == datetime(2026, 10, 28, 18, 10)
-    assert any("not open" in r for r in result.reasons)
+    assert "Car workshop opening hours on Wed: 09:00-18:00; the visit would need 16:10-18:10" in (
+        result.reasons
+    )
     assert any("deadline" in r for r in result.reasons)
 
 
 def test_car_service_tomorrow_fits_the_hours(state: SessionState, base: BaseData) -> None:
     result = _check(state, base, "T2", start=datetime(2026, 10, 29, 9, 0))
-    assert not any("not open" in r for r in result.reasons)
+    assert not any("opening hours" in r for r in result.reasons)
     assert result.arrive == datetime(2026, 10, 29, 9, 30)
 
 
@@ -115,3 +117,16 @@ def test_place_without_hours_is_always_open(base: BaseData) -> None:
 
 def test_unknown_place_lookup(base: BaseData) -> None:
     assert base.place("nowhere") is None
+
+
+@pytest.mark.parametrize(
+    ("day", "expected"),
+    [
+        (datetime(2026, 10, 31), "09:00-13:00"),
+        (datetime(2026, 11, 1), "closed"),
+    ],
+)
+def test_hours_on_names_the_windows_or_closed(base: BaseData, day: datetime, expected: str) -> None:
+    workshop = base.place("workshop")
+    assert workshop is not None
+    assert workshop.hours_on(day.date()) == expected

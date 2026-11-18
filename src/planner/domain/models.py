@@ -133,6 +133,12 @@ class Place(Frozen):
             day in w.days and w.opens <= start.time() and end.time() <= w.closes for w in self.hours
         )
 
+    def hours_on(self, day: date) -> str:
+        """Describe the opening hours on `day`, such as "09:00-18:00", or "closed"."""
+        weekday = tuple(Weekday)[day.weekday()]
+        windows = [f"{w.opens:%H:%M}-{w.closes:%H:%M}" for w in self.hours if weekday in w.days]
+        return ", ".join(windows) or "closed"
+
 
 class TravelLeg(Frozen):
     """One row of the travel table.
