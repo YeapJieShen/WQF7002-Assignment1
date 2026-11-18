@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from planner.app.tools.args import (
     TOOLS_BY_NAME,
@@ -112,7 +112,7 @@ def validate_call(name: object, raw_args: object, state: SessionState, base: Bas
     try:
         args = tool.model_validate(raw_args)
     except ValidationError as exc:
-        return Rejected(tuple(_issue_from_pydantic(e) for e in exc.errors()))
+        return Rejected(tuple(_issue_from_pydantic(e, tool) for e in exc.errors()))
     issues = _MeaningChecker(state, base).check(args)
     return Rejected(tuple(issues)) if issues else Accepted(args)
 
@@ -137,14 +137,31 @@ def creates_cycle(state: SessionState, task_id: str, prerequisites: tuple[str, .
     return False
 
 
-def _issue_from_pydantic(error: ErrorDetails) -> Issue:
+def _issue_from_pydantic(error: ErrorDetails, tool: type[BaseModel]) -> Issue:
     kind = error["type"]
     try:
         code = ErrorCode(kind)  # custom errors are raised with an ErrorCode value as type
     except ValueError:
         code = _CODE_BY_PYDANTIC_TYPE.get(kind, ErrorCode.BAD_TYPE)
     location = ".".join(str(part) for part in error["loc"])
-    return Issue(code, location or "args", error["msg"])
+    message = error["msg"]
+    if code is ErrorCode.UNEXPECTED_ARG:
+        # Small models guess field names; naming the valid ones lets them correct in one step.
+        valid = _fields_at(tool, error["loc"][:-1])
+        message = (
+            f"not a valid argument here (valid: {', '.join(valid)})"
+            if valid
+            else "this tool takes no arguments"
+        )
+    return Issue(code, location or "args", message)
+
+
+def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]:
+    """Name the fields of the (nested) model that `path` points into."""
+    for part in path:
+        # Only a nested model forbids extra keys, so every step of the path is a model field.
+        model = cast("type[BaseModel]", model.model_fields[str(part)].annotation)
+    return list(model.model_fields)
 
 
 @dataclass(frozen=True, slots=True)
