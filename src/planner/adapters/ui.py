@@ -80,7 +80,9 @@ CHAT_CHANGED_JS: Final = "(chat) => { window.plannerHasChat = Boolean(chat && ch
 SESSION_LOST: Final = "This tab's session was lost, likely by a server restart. Reload the page."
 CHARGE_NOTICE: Final = (
     "Your own endpoint is called from this server with your key, which is held for this tab "
-    "only: never stored, logged or exported. **Your provider will charge you for its use.**"
+    "only: never stored, logged or exported. **Your provider will charge you for its use.**\n\n"
+    "Only OpenAI-compatible chat endpoints are supported: a `/v1` base URL whose model supports "
+    "tool calling."
 )
 THEME: Final = gr.themes.Soft(
     primary_hue="indigo",
@@ -94,6 +96,7 @@ CSS: Final = """
   padding: var(--spacing-sm) var(--spacing-xl); background: var(--background-fill-secondary);
   width: fit-content; }
 .chip p { margin: 0; }
+.header { flex-wrap: wrap; }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
@@ -418,8 +421,8 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
     app = gr.Blocks(title="Planning delegate")
     with app:
         tab = gr.State(time_to_live=STATE_TTL_S)
-        with gr.Row(equal_height=True):
-            gr.Markdown("# Planning delegate")
+        with gr.Row(equal_height=True, elem_classes="header"):
+            gr.Markdown("# Planning delegate", min_width=220)
             chip = gr.Markdown(elem_classes="chip")
             demo_btn = gr.Button("Try a demo", size="sm", min_width=100)
             export_btn = gr.Button("💾 Export", size="sm", min_width=90)
