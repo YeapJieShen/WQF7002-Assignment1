@@ -5,7 +5,8 @@
 - Unexpected-argument rejections list the valid fields.
 - Eval runner and the challenge cases (`python -m planner.adapters.evals`).
 - Second persona (`persona_saturday`).
-- Hugging Face Docker Space (`space/`, `scripts/deploy_space.py`); default model Qwen3-4B-Instruct-2507.
+- Hugging Face Space (`space/`, `scripts/deploy_space.py`); default model Qwen3-4B-Instruct-2507.
+- Space moves from Docker plus Ollama to the Gradio SDK on ZeroGPU (transformers in-process); optional custom https endpoint per session; API clients use `tool_choice="auto"`.
 
 ## v2-improved
 - Feasibility reasons state the real opening hours ("Car workshop opening hours on Wed: 09:00-18:00; the visit would need 17:45-19:45"), so the model no longer reports the needed window as the hours.
