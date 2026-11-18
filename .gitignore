@@ -222,3 +222,4 @@ __marimo__/
 # Agent files
 .claude/
 evals/results/
+docs/report/report.html
