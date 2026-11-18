@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,6 +40,8 @@ class Settings(BaseSettings):
     tried in order until one answers.
 
     Attributes:
+        backend: The default model: "endpoints" (the list below) or "zerogpu" (Qwen3 in-process
+            on a Hugging Face ZeroGPU Space).
         llm_endpoints: The chat backends, best first.
         max_rejections: Rejected tool calls in a row before the agent gives up.
     """
@@ -46,5 +50,6 @@ class Settings(BaseSettings):
         env_prefix="PLANNER_", env_file=".env", extra="ignore", frozen=True
     )
 
+    backend: Literal["endpoints", "zerogpu"] = "endpoints"
     llm_endpoints: tuple[Endpoint, ...] = Field(default=(LOCAL_GPU,), min_length=1)
     max_rejections: int = Field(default=3, ge=1)
