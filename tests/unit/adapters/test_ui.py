@@ -23,6 +23,7 @@ from planner.adapters.ui import (
     export_state,
     forwarded,
     import_state,
+    persona_label,
     send,
     start,
     switch,
@@ -150,6 +151,10 @@ def test_backend_failure_becomes_a_visible_error(state: SessionState, base: Base
 
 def test_build_app_lays_out_without_launching(state: SessionState, base: BaseData) -> None:
     assert isinstance(build_app(lambda _: make(ScriptedModel(), state, base)), gr.Blocks)
+
+
+def test_persona_label_reads_like_a_name() -> None:
+    assert persona_label("persona_late_night") == "Late Night"
 
 
 def test_default_session_builds_without_calling_a_model() -> None:

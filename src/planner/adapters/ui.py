@@ -52,6 +52,30 @@ BACKEND_DOWN: Final = "No language-model backend answered. Check that it is runn
 SESSION_LOST: Final = "This tab's session was lost, likely by a server restart. Reload the page."
 TASK_HEADERS: Final = ["ID", "Title", "Type", "Min", "Place", "Deadline", "Status"]
 LOG_HEADERS: Final = ["Stage", "Tool", "Args", "Outcome"]
+HEADER: Final = (
+    "# Planning delegate\n"
+    "Tell me what you need to get done. I check travel time, opening hours and deadlines "
+    "before I plan, and ask before deleting anything. Every tool call shows in the log."
+)
+CHAT_PLACEHOLDER: Final = (
+    "**Try:** *What should I do now?* · *Plan my Thursday* · "
+    "*How long is the drive from home to UM?*"
+)
+THEME: Final = gr.themes.Soft(
+    primary_hue="indigo",
+    secondary_hue="slate",
+    neutral_hue="slate",
+    font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+).set(block_label_background_fill="transparent", block_title_background_fill="transparent")
+CSS: Final = """
+.header h1 { margin-bottom: 0.2rem; }
+.header p { color: var(--body-text-color-subdued); margin-top: 0; }
+.compact table, .compact td, .compact th { font-size: 0.8rem !important; }
+.compact td, .compact th { word-break: normal !important; overflow-wrap: anywhere; }
+.chat { border: 1px solid var(--border-color-primary); border-radius: var(--radius-lg); }
+.confirm-card { border: 2px solid var(--color-red-500, #ef4444) !important;
+  border-radius: var(--radius-lg); padding: 8px; }
+"""
 
 
 def default_session(state: SessionState | None = None) -> Session:
@@ -66,10 +90,10 @@ def task_rows(state: SessionState) -> Rows:
         [
             t.id,
             t.title,
-            t.type.value,
+            t.type.value.replace("_", " "),
             "" if t.duration_min is None else str(t.duration_min),
             t.place,
-            f"{t.deadline:%a %m-%d %H:%M}" if t.deadline else "",
+            f"{t.deadline:%a %d/%m %H:%M}" if t.deadline else "",
             t.status.value,
         ]
         for t in state.tasks
@@ -218,46 +242,80 @@ def _render(session: Session, history: History, reply: Reply) -> tuple[Any, ...]
     )
 
 
+def persona_label(persona: str) -> str:
+    """Name a persona file for people: `persona_wednesday` becomes `Wednesday`."""
+    return persona.removeprefix("persona_").replace("_", " ").title()
+
+
 def build_app(
     make_session: Callable[[SessionState], Session] = default_session,
 ) -> gr.Blocks:
     """Lay out the app; each browser tab gets its own session from `make_session(state)`."""
     app = gr.Blocks(title="Planning delegate")
     places = [(p.name, p.id) for p in load_base().places]
+    personas = [(persona_label(p), p) for p in list_personas()]
     with app:
         session = gr.State()
-        with gr.Row():
-            persona = gr.Dropdown(list_personas(), value=PERSONA, label="Persona")
-            clock = gr.Textbox(label="Clock", max_lines=1)
-            location = gr.Dropdown(places, label="Location")
-            daily_limit = gr.Number(label="Daily limit (min)", precision=0, minimum=0, maximum=1440)
-            distribution = gr.Slider(0, 1, step=0.1, label="Spread (0 front-loaded, 1 even)")
-            hardest_first = gr.Checkbox(label="Hardest first")
-            apply_btn = gr.Button("Apply")
-            export_btn = gr.Button("Export")
-            import_btn = gr.UploadButton("Import", file_types=[".json"])
-        exported = gr.File(label="Exported session", visible=False)
-        with gr.Row():
-            with gr.Column(scale=3):
-                chat = gr.Chatbot(label="Planning delegate")
-                with gr.Group(visible=False) as card:
+        gr.Markdown(HEADER, elem_classes="header")
+        with gr.Sidebar(label="Settings", open=False):
+            persona = gr.Dropdown(personas, value=PERSONA, label="Persona")
+            clock = gr.Textbox(label="Clock", max_lines=1, placeholder="2026-10-28 15:40")
+            location = gr.Dropdown(places, label="You are at")
+            with gr.Accordion("Pace", open=True):
+                daily_limit = gr.Number(
+                    label="Daily limit (min)", precision=0, minimum=0, maximum=1440
+                )
+                distribution = gr.Slider(
+                    0, 1, step=0.1, label="Spread", info="0 front-loaded, 1 even"
+                )
+                hardest_first = gr.Checkbox(label="Hardest first")
+            apply_btn = gr.Button("Apply settings", variant="primary", size="sm")
+            with gr.Row():
+                export_btn = gr.Button("Export", size="sm")
+                import_btn = gr.UploadButton("Import", file_types=[".json"], size="sm")
+            exported = gr.File(label="Exported session", visible=False)
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=1, min_width=360):
+                chat = gr.Chatbot(
+                    show_label=False,
+                    height=540,
+                    layout="bubble",
+                    elem_classes="chat",
+                    placeholder=CHAT_PLACEHOLDER,
+                )
+                with gr.Group(visible=False, elem_classes="confirm-card") as card:
                     question = gr.Markdown()
                     with gr.Row():
                         yes = gr.Button("Yes, do it", variant="stop")
                         no = gr.Button("No, keep it")
-                box = gr.Textbox(
-                    elem_id=BOX_ID,
-                    show_label=False,
-                    placeholder="Ask me to plan something, or paste a message to look at",
-                    max_lines=8,
-                )
-            with gr.Column(scale=2):
+                with gr.Row(equal_height=True):
+                    box = gr.Textbox(
+                        elem_id=BOX_ID,
+                        show_label=False,
+                        placeholder="Ask me to plan something, or paste a message to look at",
+                        max_lines=8,
+                        scale=6,
+                    )
+                    send_btn = gr.Button("Send", variant="primary", scale=1, min_width=80)
+            with gr.Column(scale=1, min_width=320):
                 tasks = gr.Dataframe(
-                    headers=TASK_HEADERS, label="Tasks", interactive=False, wrap=True
+                    headers=TASK_HEADERS,
+                    label="Tasks",
+                    interactive=False,
+                    wrap=True,
+                    elem_classes="compact",
+                    max_height=560,
+                    column_widths=["8%", "26%", "14%", "8%", "14%", "20%", "10%"],
                 )
-                log = gr.Dataframe(
-                    headers=LOG_HEADERS, label="Call log", interactive=False, wrap=True
-                )
+        log = gr.Dataframe(
+            headers=LOG_HEADERS,
+            label="Call log (every tool call, as it happened)",
+            interactive=False,
+            wrap=True,
+            column_widths=["10%", "14%", "38%", "38%"],
+            elem_classes="compact",
+            max_height=320,
+        )
         shown = [chat, box, tasks, log, card, question]
         settings = [clock, location, daily_limit, distribution, hardest_first]
         started = [session, tasks, log, *settings]
@@ -274,7 +332,8 @@ def build_app(
             [*settings, session],
             None,
         )
-        box.submit(None, box, box, js=MARK_PASTE_JS).then(send, [box, chat, session], shown)
+        for trigger in (box.submit, send_btn.click):
+            trigger(None, box, box, js=MARK_PASTE_JS).then(send, [box, chat, session], shown)
         yes.click(lambda h, s: answer(approved=True, history=h, session=s), [chat, session], shown)
         no.click(lambda h, s: answer(approved=False, history=h, session=s), [chat, session], shown)
     return app
