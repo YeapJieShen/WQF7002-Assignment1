@@ -26,7 +26,9 @@ class Endpoint(BaseModel):
     timeout_s: float = Field(default=120, gt=0)
 
 
-LOCAL_GPU = Endpoint(name="local-gpu", base_url="http://localhost:11434/v1", model="qwen3:4b-instruct")
+LOCAL_GPU = Endpoint(
+    name="local-gpu", base_url="http://localhost:11434/v1", model="qwen3:4b-instruct"
+)
 
 
 class Settings(BaseSettings):
