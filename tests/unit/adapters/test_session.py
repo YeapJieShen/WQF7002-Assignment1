@@ -3,9 +3,10 @@ from datetime import datetime
 from typing import Any
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage
 
-from planner.adapters.session import Reply, Session
+from planner.adapters.session import Done, Reply, Session, Stage, Token, Usage
 from planner.domain.models import BaseData, Pace, SessionState
 
 
@@ -138,3 +139,41 @@ def test_update_session_waits_for_a_pending_confirmation(
         session.update_session(pace=Pace(daily_limit_min=120))
     session.resume(approved=False)
     session.update_session(pace=Pace(daily_limit_min=120))
+
+
+def test_stream_yields_tokens_then_done(state: SessionState, base: BaseData) -> None:
+    model = GenericFakeChatModel(messages=iter([AIMessage("Hello there")]))
+    session = Session(model, base, "rules", state)
+    events = list(session.stream("hi"))
+    assert "".join(e.text for e in events if isinstance(e, Token)) == "Hello there"
+    assert events[-1] == Done(Reply("Hello there"))
+
+
+def test_a_plain_model_streams_its_reply_as_one_token(state: SessionState, base: BaseData) -> None:
+    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state)
+    assert list(session.stream("hi")) == [Token("Hello"), Done(Reply("Hello"))]
+
+
+def test_stream_yields_each_stage_as_it_happens(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
+    session = Session(model, base, "rules", state)
+    first = list(session.stream("delete T4"))
+    assert [e.record.stage for e in first if isinstance(e, Stage)] == ["check"]
+    assert isinstance(first[-1], Done)
+    assert first[-1].reply.confirm is not None
+    second = list(session.resume_stream(approved=True))
+    stages = [e.record for e in second if isinstance(e, Stage)]
+    assert (stages[0].stage, stages[0].outcome) == ("confirm", "approved")
+    assert stages[1].stage == "act"
+    assert second[-1] == Done(Reply("Deleted."))
+
+
+def test_done_sums_token_usage_over_the_turn(state: SessionState, base: BaseData) -> None:
+    def used(message: AIMessage, tokens: int) -> AIMessage:
+        usage = {"input_tokens": tokens, "output_tokens": 1, "total_tokens": tokens + 1}
+        return message.model_copy(update={"usage_metadata": usage})
+
+    model = ScriptedModel(used(call("add_task", {"title": "A"}), 10), used(AIMessage("Ok."), 20))
+    session = Session(model, base, "rules", state)
+    *_, done = session.stream("add A")
+    assert done == Done(Reply("Ok."), Usage(input_tokens=30, output_tokens=2))
