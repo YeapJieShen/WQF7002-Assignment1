@@ -232,6 +232,26 @@ def test_unexpected_args_name_the_valid_ones(state: SessionState, base: BaseData
     assert "takes no arguments" in top.message()
 
 
+def test_unexpected_args_at_one_level_list_the_valid_ones_once(
+    state: SessionState, base: BaseData
+) -> None:
+    args = {"task_id": "T4", "fields": {"done": True, "priority": 1}}
+    verdict = validate_call("update_task", args, state, base)
+    assert isinstance(verdict, Rejected)
+    assert len(verdict.issues) == 1
+    assert verdict.issues[0].field == "fields.done, fields.priority"
+    assert verdict.message().count("valid:") == 1
+
+
+def test_unexpected_args_at_two_levels_give_one_issue_each(
+    state: SessionState, base: BaseData
+) -> None:
+    args = {"task_id": "T4", "id": "T9", "fields": {"done": True}}
+    verdict = validate_call("update_task", args, state, base)
+    assert isinstance(verdict, Rejected)
+    assert sorted(i.field for i in verdict.issues) == ["fields.done", "id"]
+
+
 def test_update_fields_are_validated(codes: Codes) -> None:
     args = {"task_id": "T4", "fields": {"duration_min": 9999}}
     assert codes("update_task", args) == [ErrorCode.OUT_OF_RANGE]

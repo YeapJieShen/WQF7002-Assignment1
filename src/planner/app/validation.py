@@ -112,7 +112,7 @@ def validate_call(name: object, raw_args: object, state: SessionState, base: Bas
     try:
         args = tool.model_validate(raw_args)
     except ValidationError as exc:
-        return Rejected(tuple(_issue_from_pydantic(e, tool) for e in exc.errors()))
+        return Rejected(_issues_from_pydantic(exc.errors(), tool))
     issues = _MeaningChecker(state, base).check(args)
     return Rejected(tuple(issues)) if issues else Accepted(args)
 
@@ -137,23 +137,47 @@ def creates_cycle(state: SessionState, task_id: str, prerequisites: tuple[str, .
     return False
 
 
-def _issue_from_pydantic(error: ErrorDetails, tool: type[BaseModel]) -> Issue:
+def _issues_from_pydantic(errors: list[ErrorDetails], tool: type[BaseModel]) -> tuple[Issue, ...]:
+    """Turn pydantic errors into issues, one per error except unexpected arguments.
+
+    Unexpected arguments are grouped per level, so the valid fields are listed once per level.
+    """
+    unexpected: dict[tuple[int | str, ...], list[str]] = {}
+    for error in errors:
+        if _code_of(error) is ErrorCode.UNEXPECTED_ARG:
+            location = ".".join(str(part) for part in error["loc"])
+            unexpected.setdefault(error["loc"][:-1], []).append(location)
+    issues: list[Issue] = []
+    for error in errors:
+        code = _code_of(error)
+        if code is not ErrorCode.UNEXPECTED_ARG:
+            location = ".".join(str(part) for part in error["loc"])
+            issues.append(Issue(code, location or "args", error["msg"]))
+        elif (parent := error["loc"][:-1]) in unexpected:
+            issues.append(_unexpected_issue(tool, parent, unexpected.pop(parent)))
+    return tuple(issues)
+
+
+def _code_of(error: ErrorDetails) -> ErrorCode:
     kind = error["type"]
     try:
-        code = ErrorCode(kind)  # custom errors are raised with an ErrorCode value as type
+        return ErrorCode(kind)  # custom errors are raised with an ErrorCode value as type
     except ValueError:
-        code = _CODE_BY_PYDANTIC_TYPE.get(kind, ErrorCode.BAD_TYPE)
-    location = ".".join(str(part) for part in error["loc"])
-    message = error["msg"]
-    if code is ErrorCode.UNEXPECTED_ARG:
-        # Small models guess field names; naming the valid ones lets them correct in one step.
-        valid = _fields_at(tool, error["loc"][:-1])
-        message = (
-            f"not a valid argument here (valid: {', '.join(valid)})"
-            if valid
-            else "this tool takes no arguments"
-        )
-    return Issue(code, location or "args", message)
+        return _CODE_BY_PYDANTIC_TYPE.get(kind, ErrorCode.BAD_TYPE)
+
+
+def _unexpected_issue(
+    tool: type[BaseModel], parent: tuple[int | str, ...], locations: list[str]
+) -> Issue:
+    # Small models guess field names; naming the valid ones lets them correct in one step.
+    valid = _fields_at(tool, parent)
+    if not valid:
+        message = "this tool takes no arguments"
+    elif len(locations) == 1:
+        message = f"not a valid argument here (valid: {', '.join(valid)})"
+    else:
+        message = f"not valid arguments here (valid: {', '.join(valid)})"
+    return Issue(ErrorCode.UNEXPECTED_ARG, ", ".join(locations), message)
 
 
 def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]:
