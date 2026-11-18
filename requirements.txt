@@ -1,6 +1,6 @@
 # Runtime dependencies, pinned to the versions tested (source of truth: pyproject.toml).
 # Install the app itself with: pip install -e .
-gradio==6.31.0
+gradio[oauth]==6.31.0
 langgraph==1.2.18
 langchain-core==1.7.0
 langchain-openai==1.7.3

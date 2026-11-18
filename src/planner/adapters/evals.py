@@ -20,14 +20,22 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict
 
 from planner.adapters.config import Settings
-from planner.adapters.llm import BACKEND_ERRORS
-from planner.adapters.ui import default_session, forwarded
+from planner.adapters.data import load_base, load_persona, load_rules
+from planner.adapters.llm import BACKEND_ERRORS, build_model
+from planner.adapters.session import Session
+from planner.adapters.ui import PERSONA, forwarded
 from planner.app.calls import CallRecord
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from planner.adapters.session import Session
+    from planner.domain.models import SessionState
+
+
+def default_session(state: SessionState | None = None) -> Session:
+    """Start a conversation with the configured model, from `state` or the sample persona."""
+    start = state or load_persona(PERSONA)
+    return Session(build_model(Settings()), load_base(), load_rules(), start)
 
 
 class Case(BaseModel):
