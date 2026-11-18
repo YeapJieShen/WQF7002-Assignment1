@@ -1,3 +1,0 @@
-# Files run inside the Linux Space container must keep LF endings.
-*.sh text eol=lf
-space/Dockerfile text eol=lf

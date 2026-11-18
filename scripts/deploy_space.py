@@ -16,8 +16,6 @@ from huggingface_hub import HfApi, get_token
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = shutil.ignore_patterns("__pycache__", "*.pyc", "*.egg-info")
-# Left over from the Docker Space this replaced.
-STALE = ["Dockerfile", "start.sh", "pyproject.toml"]
 
 
 def stage(into: Path) -> None:
@@ -41,7 +39,7 @@ def main() -> None:
             repo_id=repo_id,
             repo_type="space",
             commit_message="Deploy from GitHub",
-            delete_patterns=["src/**", *STALE],
+            delete_patterns=["src/**"],
         )
     print(f"Uploaded. Build log: https://huggingface.co/spaces/{repo_id}?logs=build")
 
