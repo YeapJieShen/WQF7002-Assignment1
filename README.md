@@ -15,8 +15,11 @@ ollama pull qwen3:4b-instruct             # default model (Qwen3-4B-Instruct-250
 planner                                   # or: python -m planner -> http://127.0.0.1:7860
 ```
 
-Settings open from the left sidebar: persona, clock, location, pace and JSON export/import.
-The task list and the call log open from the right sidebar.
+The app starts empty on the real clock; "Try a demo" loads the sample persona. Tabs: Chat (every
+tool call appears inline as a collapsible row), Tasks (with read-only places and travel) and Pace
+(all pace settings with a live chart). The header exports and imports the session and downloads a
+transcript; the gear opens the model sidebar, where you can use your own OpenAI-compatible
+endpoint (your key stays on the server for your tab and is never exported).
 
 Backends are an ordered fallback list, configured in `.env` (see `.env.example`):
 
