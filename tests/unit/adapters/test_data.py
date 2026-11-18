@@ -1,4 +1,6 @@
-from planner.adapters.data import list_personas, load_rules
+import pytest
+
+from planner.adapters.data import list_personas, load_persona, load_rules
 from planner.domain.models import ANYWHERE, BaseData, Mode, SessionState, Weekday
 
 
@@ -60,3 +62,16 @@ def test_leg_same_place_is_zero(base: BaseData) -> None:
 
 def test_personas_are_listed_by_file_name() -> None:
     assert "persona_wednesday" in list_personas()
+
+
+@pytest.mark.parametrize("name", list_personas())
+def test_every_persona_loads_with_known_places_and_tasks(name: str, base: BaseData) -> None:
+    persona = load_persona(name)
+    ids = {t.id for t in persona.tasks}
+    assert persona.location in base.place_ids
+    assert all(t.place in base.place_ids | {ANYWHERE} for t in persona.tasks)
+    assert all(set(t.prerequisites) <= ids for t in persona.tasks)
+
+
+def test_there_is_a_second_persona() -> None:
+    assert "persona_saturday" in list_personas()
