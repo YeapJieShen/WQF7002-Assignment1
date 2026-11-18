@@ -7,7 +7,7 @@ RUN apt-get update \
     && curl -fsSL https://ollama.com/install.sh | sh
 
 # The model is baked into the image so a restart does not download it again.
-ARG MODEL=granite4.2:3b
+ARG MODEL=qwen3:4b-instruct
 ENV OLLAMA_MODELS=/opt/ollama/models \
     OLLAMA_HOST=127.0.0.1:11434 \
     OLLAMA_CONTEXT_LENGTH=8192 \
