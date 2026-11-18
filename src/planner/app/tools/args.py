@@ -74,7 +74,7 @@ class TaskPatch(BaseModel):
 
 
 class UpdateTaskArgs(ToolArgs):
-    """Edit a task or mark it done."""
+    """Edit a task, or mark it done with fields {"status": "done"}."""
 
     tool_name: ClassVar[str] = "update_task"
 

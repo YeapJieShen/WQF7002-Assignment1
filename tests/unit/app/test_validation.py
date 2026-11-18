@@ -222,6 +222,16 @@ def test_update_cannot_change_id(codes: Codes) -> None:
     assert codes("update_task", args) == [ErrorCode.UNEXPECTED_ARG]
 
 
+def test_unexpected_args_name_the_valid_ones(state: SessionState, base: BaseData) -> None:
+    verdict = validate_call("update_task", {"task_id": "T4", "fields": {"done": True}}, state, base)
+    assert isinstance(verdict, Rejected)
+    assert "status" in verdict.message()
+    assert verdict.issues[0].field == "fields.done"
+    top = validate_call("recommend_now", {"now": "x"}, state, base)
+    assert isinstance(top, Rejected)
+    assert "takes no arguments" in top.message()
+
+
 def test_update_fields_are_validated(codes: Codes) -> None:
     args = {"task_id": "T4", "fields": {"duration_min": 9999}}
     assert codes("update_task", args) == [ErrorCode.OUT_OF_RANGE]
