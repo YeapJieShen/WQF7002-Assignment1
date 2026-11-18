@@ -55,7 +55,7 @@ LOG_HEADERS: Final = ["Stage", "Tool", "Args", "Outcome"]
 HEADER: Final = (
     "# Planning delegate\n"
     "Tell me what you need to get done. I check travel time, opening hours and deadlines "
-    "before I plan, and ask before deleting anything. Every tool call shows in the log."
+    "before I plan, and ask before deleting anything."
 )
 CHAT_PLACEHOLDER: Final = (
     "**Try:** *What should I do now?* · *Plan my Thursday* · "
@@ -71,7 +71,7 @@ CSS: Final = """
 .header h1 { margin-bottom: 0.2rem; }
 .header p { color: var(--body-text-color-subdued); margin-top: 0; }
 .compact table, .compact td, .compact th { font-size: 0.8rem !important; }
-.compact td, .compact th { word-break: normal !important; overflow-wrap: anywhere; }
+.compact td, .compact th { word-break: normal !important; overflow-wrap: break-word; }
 .chat { border: 1px solid var(--border-color-primary); border-radius: var(--radius-lg); }
 .confirm-card { border: 2px solid var(--color-red-500, #ef4444) !important;
   border-radius: var(--radius-lg); padding: 8px; }
@@ -274,48 +274,45 @@ def build_app(
                 export_btn = gr.Button("Export", size="sm")
                 import_btn = gr.UploadButton("Import", file_types=[".json"], size="sm")
             exported = gr.File(label="Exported session", visible=False)
-        with gr.Row(equal_height=False):
-            with gr.Column(scale=1, min_width=360):
-                chat = gr.Chatbot(
-                    show_label=False,
-                    height=540,
-                    layout="bubble",
-                    elem_classes="chat",
-                    placeholder=CHAT_PLACEHOLDER,
-                )
-                with gr.Group(visible=False, elem_classes="confirm-card") as card:
-                    question = gr.Markdown()
-                    with gr.Row():
-                        yes = gr.Button("Yes, do it", variant="stop")
-                        no = gr.Button("No, keep it")
-                with gr.Row(equal_height=True):
-                    box = gr.Textbox(
-                        elem_id=BOX_ID,
-                        show_label=False,
-                        placeholder="Ask me to plan something, or paste a message to look at",
-                        max_lines=8,
-                        scale=6,
-                    )
-                    send_btn = gr.Button("Send", variant="primary", scale=1, min_width=80)
-            with gr.Column(scale=1, min_width=320):
-                tasks = gr.Dataframe(
-                    headers=TASK_HEADERS,
-                    label="Tasks",
-                    interactive=False,
-                    wrap=True,
-                    elem_classes="compact",
-                    max_height=560,
-                    column_widths=["8%", "26%", "14%", "8%", "14%", "20%", "10%"],
-                )
-        log = gr.Dataframe(
-            headers=LOG_HEADERS,
-            label="Call log (every tool call, as it happened)",
-            interactive=False,
-            wrap=True,
-            column_widths=["10%", "14%", "38%", "38%"],
-            elem_classes="compact",
-            max_height=320,
+        chat = gr.Chatbot(
+            show_label=False,
+            height="65vh",
+            layout="bubble",
+            elem_classes="chat",
+            placeholder=CHAT_PLACEHOLDER,
         )
+        with gr.Group(visible=False, elem_classes="confirm-card") as card:
+            question = gr.Markdown()
+            with gr.Row():
+                yes = gr.Button("Yes, do it", variant="stop")
+                no = gr.Button("No, keep it")
+        with gr.Row(equal_height=True):
+            box = gr.Textbox(
+                elem_id=BOX_ID,
+                show_label=False,
+                placeholder="Ask me to plan something, or paste a message to look at",
+                max_lines=8,
+                scale=8,
+            )
+            send_btn = gr.Button("Send", variant="primary", scale=1, min_width=80)
+        with gr.Sidebar(label="Tasks and tool calls", open=False, position="right", width=700):
+            tasks = gr.Dataframe(
+                headers=TASK_HEADERS,
+                label="Tasks",
+                interactive=False,
+                wrap=True,
+                elem_classes="compact",
+                column_widths=["8%", "26%", "14%", "8%", "14%", "20%", "10%"],
+            )
+            log = gr.Dataframe(
+                headers=LOG_HEADERS,
+                label="Call log (every tool call, as it happened)",
+                interactive=False,
+                wrap=True,
+                column_widths=["14%", "20%", "33%", "33%"],
+                elem_classes="compact",
+                max_height=420,
+            )
         shown = [chat, box, tasks, log, card, question]
         settings = [clock, location, daily_limit, distribution, hardest_first]
         started = [session, tasks, log, *settings]
