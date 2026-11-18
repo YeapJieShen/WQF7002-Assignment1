@@ -19,6 +19,7 @@ Examples use the sample user `persona_wednesday`: Wednesday 2026-10-28, 15:40, a
 | A4 | "What should I do now?" | `recommend_now` returns a task that fits `now`, location, hours and prerequisites | unit |
 | A5 | "Plan tomorrow" | `plan_day` for Thu 29: respects the daily limit, breaks, opening hours, prerequisites, travel | unit |
 | A6 | "Can I get groceries before class today?" | `check_feasibility` answers yes/no with the arithmetic behind it | unit + eval |
+| A7 | "I'm at the library now" | `set_location` to `library`; later travel counts from there; an unknown place is rejected with the known ones listed | unit + eval |
 
 ## B. Knowing its limits
 

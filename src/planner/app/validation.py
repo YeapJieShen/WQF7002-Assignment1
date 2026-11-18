@@ -22,6 +22,7 @@ from planner.app.tools.args import (
     DeleteTaskArgs,
     PlanDayArgs,
     RecommendNowArgs,
+    SetLocationArgs,
     ToolArgs,
     TravelTimeArgs,
     UpdateTaskArgs,
@@ -226,6 +227,8 @@ class _MeaningChecker:
                 return self._day_in_horizon(args.date)
             case RecommendNowArgs():
                 return []
+            case SetLocationArgs():
+                return self._known_place(args.place_id, "place_id", allow_anywhere=False)
             case _:  # pragma: no cover - every registered tool is handled above
                 msg = f"unhandled tool: {type(args).__name__}"
                 raise AssertionError(msg)

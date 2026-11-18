@@ -1,4 +1,4 @@
-"""Argument models for the seven tools.
+"""Argument models for the eight tools.
 
 Single source of truth: each model yields the JSON schema shown to the LLM and performs the
 shape checks (types, ranges, no unexpected arguments). State-dependent checks (IDs, places,
@@ -116,6 +116,14 @@ class RecommendNowArgs(ToolArgs):
     tool_name: ClassVar[str] = "recommend_now"
 
 
+class SetLocationArgs(ToolArgs):
+    """Record where the user is now, when they say they have moved to a known place."""
+
+    tool_name: ClassVar[str] = "set_location"
+
+    place_id: Text
+
+
 class PlanDayArgs(ToolArgs):
     """Plan one day: prerequisites first, least slack first, travel buffers, pace, daily limit."""
 
@@ -132,5 +140,6 @@ _ALL_TOOLS: Final[tuple[type[ToolArgs], ...]] = (
     CheckFeasibilityArgs,
     RecommendNowArgs,
     PlanDayArgs,
+    SetLocationArgs,
 )
 TOOLS_BY_NAME: Final[dict[str, type[ToolArgs]]] = {t.tool_name: t for t in _ALL_TOOLS}

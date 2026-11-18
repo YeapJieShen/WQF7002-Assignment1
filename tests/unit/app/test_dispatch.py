@@ -13,8 +13,9 @@ CALLS = {
     "check_feasibility": {"task_id": "T3", "start": "2026-10-28T15:40", "from_place": "office"},
     "recommend_now": {},
     "plan_day": {"date": "2026-10-29"},
+    "set_location": {"place_id": "home"},
 }
-EDITING = {"add_task", "update_task", "delete_task"}
+EDITING = {"add_task", "update_task", "delete_task", "set_location"}
 
 
 def test_every_registered_tool_has_an_example() -> None:
