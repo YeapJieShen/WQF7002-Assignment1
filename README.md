@@ -43,8 +43,7 @@ Imports point inward only, and `import-linter` enforces it. The agent graph runs
 - **confirm**: `delete_task` always pauses on a LangGraph `interrupt()` until the user answers.
 - **act**: the tool returns a new immutable state plus a message for the model.
 
-Design scenarios and decisions: [docs/scenarios.md](docs/scenarios.md). Report:
-[docs/report/report.md](docs/report/report.md).
+Design scenarios and decisions: [docs/scenarios.md](docs/scenarios.md).
 
 ## Checks
 
