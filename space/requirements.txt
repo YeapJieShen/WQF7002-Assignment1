@@ -1,5 +1,7 @@
 # Installed on top of the Gradio SDK image: gradio comes from sdk_version in README.md and
-# spaces is preinstalled on ZeroGPU. Pins match ../requirements.txt.
+# spaces is preinstalled. gradio[oauth] adds authlib and itsdangerous for LoginButton.
+# Pins match ../requirements.txt.
+gradio[oauth]==6.31.0
 langgraph==1.2.18
 langchain-core==1.7.0
 langchain-openai==1.7.3

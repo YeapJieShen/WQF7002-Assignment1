@@ -135,7 +135,7 @@ def parse_reply(text: str) -> AIMessage:
 
 
 class TemplateChat(BaseChatModel):
-    """A chat model over an `Engine`, with the seven tools always offered.
+    """A chat model over an `Engine`, with the tools always offered.
 
     Attributes:
         engine: Renders prompts, counts tokens and generates.

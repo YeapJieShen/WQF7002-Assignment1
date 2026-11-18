@@ -9,7 +9,7 @@ asks you before anything is deleted. Every call is shown in a log, rejected ones
 ## Run it
 
 ```bash
-conda activate wqf7002_assignment1        # Python >= 3.13
+conda activate wqf7002_assignment1        # Python >= 3.12
 pip install -e . --group dev
 ollama pull qwen3:4b-instruct             # default model (Qwen3-4B-Instruct-2507)
 planner                                   # or: python -m planner -> http://127.0.0.1:7860
