@@ -62,12 +62,13 @@ Reports go to `evals/results/` (gitignored).
 
 ## Deploy (Hugging Face Space)
 
-`space/` holds a Docker Space: Ollama with the model baked in, plus the app. If the
-`HF_TOKEN` and `HF_ROUTER_MODEL` secrets are set, HF Inference Providers answer first and the
-Space CPU is the fallback.
+`space/` holds a Gradio SDK Space on ZeroGPU: Qwen3-4B-Instruct-2507 runs in-process with
+transformers (`PLANNER_BACKEND=zerogpu`, set by `space/app.py`), on each visitor's own GPU quota.
+Visitors can instead give their own https OpenAI-compatible endpoint for the session. Log in once
+with `hf auth login`, then:
 
 ```bash
-HF_TOKEN=hf_... python scripts/deploy_space.py <user>/<space>
+python scripts/deploy_space.py <user>/<space>
 ```
 
 ## Versions
