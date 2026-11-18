@@ -7,7 +7,7 @@ id = "1-now"
 kind = "normal"
 input = "What should I do now?"
 expect_tools = ["recommend_now"]
-expected = "Car service now: the workshop closes 18:00 and the Friday drive depends on it; gives travel time and the reason."
+expected = "Reply to the supervisor now (15 min, due tonight). The car service cannot fit today: 15:40 + 30 min travel + 120 min = 18:10, after the 18:00 close; says so and that it is needed before Friday's drive (Thursday)."
 
 [[case]]
 id = "2-add"
@@ -21,7 +21,7 @@ id = "3-feasible"
 kind = "normal"
 input = "If I leave at 5:15, can I still get the car serviced today?"
 expect_tools = ["check_feasibility"]
-expected = "No: arrives about 17:45 and needs 120 minutes before 18:00; offers the earliest alternative."
+expected = "No: leaving 17:15 arrives about 17:45 and the 120-minute service would end 19:45, after the 18:00 close; offers the earliest alternative (Thursday)."
 
 [[case]]
 id = "4-plan"

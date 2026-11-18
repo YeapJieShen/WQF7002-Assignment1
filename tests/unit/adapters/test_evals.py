@@ -1,6 +1,9 @@
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
+import httpx
+import openai
 from langchain_core.messages import AIMessage, AnyMessage
 
 from planner.adapters.config import Endpoint, Settings
@@ -87,3 +90,16 @@ def test_backend_label_names_each_endpoint_in_order() -> None:
         Endpoint(name="cloud", base_url="http://b", model="m2"),
     )
     assert backend_label(Settings(llm_endpoints=endpoints)) == "gpu (m1) -> cloud (m2)"
+
+
+class DownModel:
+    def invoke(self, messages: Sequence[AnyMessage], /) -> AIMessage:  # noqa: ARG002 - protocol
+        request: Any = httpx.Request("POST", "http://down")
+        raise openai.APITimeoutError(request=request)
+
+
+def test_a_backend_error_is_recorded_not_raised(state: SessionState, base: BaseData) -> None:
+    case = Case(id="t", kind="normal", input="hi", expect_tools=("plan_day",), expected="?")
+    outcome = run_case(case, lambda: session_of(DownModel(), state, base))  # type: ignore[arg-type]
+    assert outcome.reply == "(backend error: APITimeoutError)"
+    assert not outcome.calls_ok

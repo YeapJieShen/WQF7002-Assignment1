@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict
 
 from planner.adapters.config import Settings
+from planner.adapters.llm import BACKEND_ERRORS
 from planner.adapters.ui import default_session, forwarded
 from planner.app.calls import CallRecord
 
@@ -87,17 +88,23 @@ def run_case(case: Case, make_session: Callable[[], Session]) -> Outcome:
     session = make_session()
     before = len(session.state.tasks)
     started = time.perf_counter()
-    reply = session.send(forwarded(case.input) if case.pasted else case.input)
-    confirm = reply.confirm
-    if confirm is not None and case.answer is not None:
-        reply = session.resume(approved=case.answer)
+    confirm = None
+    try:
+        reply = session.send(forwarded(case.input) if case.pasted else case.input)
+        confirm = reply.confirm
+        if confirm is not None and case.answer is not None:
+            reply = session.resume(approved=case.answer)
+        text = reply.text
+    except BACKEND_ERRORS as exc:
+        # Record the failure and move on; one slow case should not end the run.
+        text = f"(backend error: {type(exc).__name__})"
     seconds = time.perf_counter() - started
     calls = session.call_log
     checked = {c.tool for c in calls if c.stage == "check"}
     ran = {c.tool for c in calls if c.stage == "act"}
     return Outcome(
         case=case,
-        reply=reply.text,
+        reply=text,
         confirm=confirm,
         calls=calls,
         tasks_before=before,
