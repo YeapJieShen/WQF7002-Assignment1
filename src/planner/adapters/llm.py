@@ -54,7 +54,7 @@ def build_model(settings: Settings) -> ChatRunnable:
     Returns:
         A model that moves to the next endpoint on connection, timeout, rate-limit or 5xx errors.
     """
-    return chain([_client(e) for e in settings.llm_endpoints])
+    return chain([client(e) for e in settings.llm_endpoints])
 
 
 def chain(models: Sequence[ChatRunnable]) -> ChatRunnable:
@@ -65,7 +65,11 @@ def chain(models: Sequence[ChatRunnable]) -> ChatRunnable:
     return first.with_fallbacks(list(rest), exceptions_to_handle=BACKEND_ERRORS)
 
 
-def _client(endpoint: Endpoint) -> ChatRunnable:
+def client(endpoint: Endpoint) -> ChatRunnable:
+    """Build the chat client for one endpoint, with the seven tools bound.
+
+    The model may answer in text or call one tool; it is never forced to call one.
+    """
     # max_retries=0: a failing endpoint should hand over to the next one at once.
     chat = ChatOpenAI(
         openai_api_base=endpoint.base_url,
@@ -74,4 +78,4 @@ def _client(endpoint: Endpoint) -> ChatRunnable:
         request_timeout=endpoint.timeout_s,
         max_retries=0,
     )
-    return chat.bind_tools(tool_specs(), parallel_tool_calls=False)
+    return chat.bind_tools(tool_specs(), tool_choice="auto", parallel_tool_calls=False)

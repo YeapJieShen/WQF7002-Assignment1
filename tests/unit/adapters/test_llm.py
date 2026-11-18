@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
 from planner.adapters.config import LOCAL_GPU, Settings
-from planner.adapters.llm import build_model, chain, tool_specs
+from planner.adapters.llm import build_model, chain, client, tool_specs
 from planner.app.tools.args import TOOLS_BY_NAME
 
 REQUEST = httpx2.Request("POST", "http://backend.test/v1/chat/completions")
@@ -68,3 +68,9 @@ def test_other_errors_are_not_hidden_by_a_fallback() -> None:
     model = chain([_fails(ValueError("bug")), _answers("fallback")])
     with pytest.raises(ValueError, match="bug"):
         model.invoke("hi")
+
+
+def test_a_client_lets_the_model_choose_one_tool_or_none() -> None:
+    bound = client(LOCAL_GPU).kwargs  # type: ignore[attr-defined]
+    assert bound["tool_choice"] == "auto"
+    assert bound["parallel_tool_calls"] is False
