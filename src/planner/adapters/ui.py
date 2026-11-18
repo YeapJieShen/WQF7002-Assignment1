@@ -97,6 +97,7 @@ CSS: Final = """
   width: fit-content; }
 .chip p { margin: 0; }
 .header { flex-wrap: wrap; }
+.header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
