@@ -92,6 +92,10 @@ def test_backend_label_names_each_endpoint_in_order() -> None:
     assert backend_label(Settings(llm_endpoints=endpoints)) == "gpu (m1) -> cloud (m2)"
 
 
+def test_backend_label_names_the_in_process_model() -> None:
+    assert backend_label(Settings(backend="zerogpu")).startswith("zerogpu")
+
+
 class DownModel:
     def invoke(self, messages: Sequence[AnyMessage], /) -> AIMessage:  # noqa: ARG002 - protocol
         request: Any = httpx.Request("POST", "http://down")
