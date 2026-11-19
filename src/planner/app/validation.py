@@ -12,6 +12,7 @@ A rejected call carries issues phrased for the model to correct; it is never sil
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
 from typing import TYPE_CHECKING, Final, Protocol, cast
@@ -42,6 +43,15 @@ if TYPE_CHECKING:
 
 DELETE_ALL: Final = "all"
 """Value of `delete_task.task_id` that targets every task."""
+
+_NUMBER_WORDS: Final = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|an?"
+_TIME_UNITS: Final = "minutes?|mins?|hours?|hrs?|h"
+_AMOUNT_OF_TIME: Final = re.compile(
+    rf"\b(?:\d+(?:\.\d+)?\s*|(?:{_NUMBER_WORDS})\s+)(?:{_TIME_UNITS})\b"
+)
+"""A duration quote must state an amount of time: a number (digits or word) and a unit."""
+_MIN_DEADLINE_QUOTE: Final = 3
+"""A deadline quote is the user's relative phrase; this and a letter or digit rule out junk."""
 
 _NOTHING_TO_DELETE: Final = Issue(
     ErrorCode.UNKNOWN_TASK, "task_id", "there are no tasks to delete; the list is already empty"
@@ -221,6 +231,13 @@ def _normalised(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
+def _states(what: str, words: str) -> bool:
+    """Tell whether a normalised quote could state a duration or deadline at all."""
+    if what == "duration":
+        return _AMOUNT_OF_TIME.search(words) is not None
+    return len(words) >= _MIN_DEADLINE_QUOTE and any(c.isalnum() for c in words)
+
+
 def _task_consistency(prefix: str, task_type: TaskType, fields: _TimedTask) -> list[Issue]:
     """Cross-field checks on a whole task, as it would be after the call."""
     issues = []
@@ -314,13 +331,16 @@ class _MeaningChecker:
         value_field = prefix + ("duration_min" if what == "duration" else what)
         quote_field = f"{prefix}{what}_quote"
         words = _normalised(quote or "")
-        if value is None or (words and any(words in message for message in self.said)):
+        if value is None:
             return []
-        problem = (
-            f"'{quote}' is not in the user's messages this turn"
-            if words
-            else f"{value_field} needs {quote_field}, the user's own words that state it"
-        )
+        if not words:
+            problem = f"{value_field} needs {quote_field}, the user's own words that state it"
+        elif not any(words in message for message in self.said):
+            problem = f"'{quote}' is not in the user's messages this turn"
+        elif not _states(what, words):
+            problem = f"'{quote}' does not state a {what}"
+        else:
+            return []
         advice = f"do not guess: ask the user for it, or leave {value_field} out"
         message = f"{problem}. If the user has not stated a {what}, {advice}"
         return [Issue(ErrorCode.UNSTATED_VALUE, quote_field, message)]
