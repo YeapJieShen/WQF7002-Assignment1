@@ -53,3 +53,14 @@ def load_persona(name: str) -> SessionState:
     return SessionState.model_validate_json(
         (_RESOURCES / "personas" / f"{name}.json").read_text("utf-8")
     )
+
+
+def persona_label(state: SessionState) -> str:
+    """Name a persona by its simulated start, such as "Wednesday 28 Oct, 15:40"."""
+    return f"{state.now:%A} {state.now.day} {state.now:%b, %H:%M}"
+
+
+def persona_choices() -> list[tuple[str, str]]:
+    """Every sample persona as a (label, name) pair for a dropdown, ordered by start time."""
+    loaded = sorted(((load_persona(n), n) for n in list_personas()), key=lambda p: p[0].now)
+    return [(persona_label(state), name) for state, name in loaded]

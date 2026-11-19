@@ -22,7 +22,13 @@ from pydantic import SecretStr, TypeAdapter
 
 from planner.adapters.chat import History, Tab, new_tab, release_endpoint, stream_turn, use_endpoint
 from planner.adapters.config import DUMMY_API_KEY, Endpoint
-from planner.adapters.data import PERSONA, load_base, load_persona, load_rules
+from planner.adapters.data import (
+    PERSONA,
+    load_base,
+    load_persona,
+    load_rules,
+    persona_choices,
+)
 from planner.adapters.endpoint_guard import loggable
 from planner.adapters.logs import emit
 from planner.adapters.transcript import transcript
@@ -295,9 +301,9 @@ class Controller:
         )
         return tab, *self.full(tab)
 
-    def demo(self, tab: Tab | None) -> tuple[Any, ...]:
-        """Start over from the sample persona on its simulated clock."""
-        return self._restart(tab, load_persona(PERSONA))
+    def demo(self, tab: Tab | None, persona: str = PERSONA) -> tuple[Any, ...]:
+        """Start over from a sample persona (Wednesday by default), on a simulated clock."""
+        return self._restart(tab, load_persona(persona))
 
     def import_state(self, tab: Tab | None, path: str | None) -> tuple[Any, ...]:
         """Start over from an exported state file."""
@@ -641,6 +647,12 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 chart = gr.Plot(label="Pace", show_label=False)
         with gr.Sidebar(label="Settings", open=False, position="right"):
             gr.Markdown("### Session")
+            persona = gr.Dropdown(
+                persona_choices(),
+                value=PERSONA,
+                show_label=False,
+                filterable=False,
+            )
             demo_btn = gr.Button("Try a demo", size="sm")
             gr.Markdown("### Model")
             choice = gr.Dropdown(
@@ -672,7 +684,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         app.load(None, box, None, js=ARROW_JS)
         box.change(None, box, None, js=ARROW_JS)
         chatbot.change(None, chatbot, None, js=CHAT_CHANGED_JS)
-        demo_btn.click(ctl.demo, tab, reset, api_visibility="private")
+        demo_btn.click(ctl.demo, [tab, persona], reset, api_visibility="private")
         import_btn.upload(ctl.import_state, [tab, import_btn], reset, api_visibility="private")
         export_btn.click(ctl.export_state, tab, download, api_visibility="private")
         transcript_btn.click(ctl.export_transcript, tab, download, api_visibility="private")
