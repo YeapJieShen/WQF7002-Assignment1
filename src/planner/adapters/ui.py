@@ -150,6 +150,7 @@ CSS: Final = """
   border: 1px solid var(--primary-500); }
 .help { display: block; text-align: right; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
+.confirm-card .row { padding: 0 var(--spacing-md) var(--spacing-md); }
 .examples button, .example { border: 1px solid var(--border-color-primary) !important;
   border-radius: var(--radius-lg); }
 .examples button:hover, .example:hover { border-color: var(--border-color-accent) !important; }
