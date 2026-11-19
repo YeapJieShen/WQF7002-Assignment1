@@ -120,6 +120,10 @@ CSS: Final = """
 .badge.bad { background: var(--color-red-500); }
 .badge.wait { background: var(--color-orange-500); }
 .badge.run { background: var(--color-blue-500); }
+.spinner { display: inline-block; width: 0.9em; height: 0.9em; margin-right: 0.5em;
+  border: 2px solid var(--border-color-primary); border-top-color: var(--color-accent);
+  border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
@@ -434,6 +438,7 @@ class Controller:
             lambda: live.session.stream(prompt),
             said=text,
             signed_in=profile is not None,
+            rotate_s=self.settings.thinking_rotate_s,
         ):
             yield chat, gr.skip(), gr.skip()
 
@@ -462,6 +467,7 @@ class Controller:
             lambda: live.session.resume_stream(approved),
             said="(confirmed)" if approved else "(declined)",
             signed_in=profile is not None,
+            rotate_s=self.settings.thinking_rotate_s,
         )
 
     def pick_example(self, picked: gr.SelectData) -> str:

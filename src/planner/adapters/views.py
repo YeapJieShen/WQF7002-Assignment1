@@ -31,6 +31,19 @@ SAMPLE_MIN: Final = 600
 SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
 EXAMPLES_SHOWN: Final = 3
+THINKING_WORDS: Final = (
+    "Thinking…",
+    "Planning…",
+    "Pondering…",
+    "Crunching…",
+    "Buzzing…",
+    "Weighing options…",
+    "Checking the clock…",
+    "Reading your tasks…",
+    "Working it out…",
+    "Almost there…",
+)
+"""The texts the pending line rotates through while the agent is silent."""
 _REFUSED: Final = ("rejected", "declined")
 
 
@@ -107,6 +120,16 @@ def _call_state(last: CallRecord, *, waiting: bool) -> tuple[_CallState, bool]:
     if last.stage == "check":
         return _CallState("checked", "run"), False
     return _CallState("running", "run"), False
+
+
+def thinking(tick: int, tool: str | None = None) -> Message:
+    """The pending line shown while the agent works: a tool hint, else a rotating word.
+
+    It is plain reply text with a small spinner, not a collapsible row, so it never nests a box
+    inside the bubble.
+    """
+    text = f"Running {tool}…" if tool else THINKING_WORDS[tick % len(THINKING_WORDS)]
+    return {"role": "assistant", "content": f'<span class="spinner"></span>{text}'}
 
 
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:

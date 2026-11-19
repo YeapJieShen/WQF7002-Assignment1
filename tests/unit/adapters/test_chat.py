@@ -1,11 +1,14 @@
+import threading
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
-from planner.adapters.chat import Tab, new_tab, stream_turn, use_endpoint
+from planner.adapters.chat import Tab, Tick, _heartbeat, new_tab, stream_turn, use_endpoint
 from planner.adapters.config import Endpoint
+from planner.adapters.session import Event, Token
 from planner.domain.models import BaseData, SessionState
 from tests.unit.adapters.fakes import Boom, FailingModel, FakeBackend, ScriptedModel, call
 
@@ -21,7 +24,13 @@ def run(tab: Tab, backend: FakeBackend, text: str, *, signed_in: bool = False) -
     history = [{"role": "user", "content": text}]
     return list(
         stream_turn(
-            tab, backend, history, lambda: tab.session.stream(text), said=text, signed_in=signed_in
+            tab,
+            backend,
+            history,
+            lambda: tab.session.stream(text),
+            said=text,
+            signed_in=signed_in,
+            rotate_s=60,
         )
     )
 
@@ -89,6 +98,7 @@ def test_a_confirmation_pauses_then_the_answer_finishes_it(
             lambda: tab.session.resume_stream(approved=True),
             said="(confirmed)",
             signed_in=False,
+            rotate_s=60,
         )
     )[-1]
     assert final[-1]["content"] == "Deleted."
@@ -159,6 +169,7 @@ def answer(tab: Tab, backend: FakeBackend, history: list[Any]) -> list[Any]:
             lambda: tab.session.resume_stream(approved=True),
             said="(confirmed)",
             signed_in=False,
+            rotate_s=60,
         )
     )[-1]
 
@@ -184,3 +195,39 @@ def test_an_answer_works_when_the_browser_sends_no_metadata_on_plain_messages(
     assert any(m["metadata"] is None for m in sent)
     final = answer(tab, backend, sent)
     assert next(t for t in titles(final) if "delete_task" in t).count("badge ok") == 1
+
+
+def test_the_pending_line_shows_first_then_names_the_running_tool(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
+    backend, tab = make(model, state, base, price=None)
+    frames = run(tab, backend, "add")
+    assert "Thinking…" in frames[0][-1]["content"]
+    assert any("Running add_task…" in f[-1]["content"] for f in frames[:-1])
+    assert "spinner" not in str(frames[-1])
+
+
+def test_a_slow_model_rotates_the_pending_text() -> None:
+    gate = threading.Event()
+
+    def slow() -> Iterator[Event]:
+        gate.wait(2)
+        yield Token("hi")
+
+    seen: list[Tick] = []
+    for item in _heartbeat(slow(), 0.01):
+        if isinstance(item, Tick) and len(seen) < 2:
+            seen.append(item)
+        if len(seen) == 2:
+            gate.set()
+    assert len(seen) == 2
+
+
+def test_an_error_in_the_model_thread_reaches_the_consumer() -> None:
+    def broken() -> Iterator[Event]:
+        yield Token("hi")
+        raise Boom
+
+    with pytest.raises(Boom):
+        list(_heartbeat(broken(), 1))

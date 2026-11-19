@@ -62,6 +62,8 @@ class Settings(BaseSettings):
             Hermes format Qwen3 uses; the payload between the markers must still be Hermes JSON,
             `{"name": ..., "arguments": {...}}`, whatever the markers are.
         tool_call_close: Text that closes a tool call; generation stops at it.
+        thinking_rotate_s: Seconds of silence after which the chat's pending line ("Thinking…")
+            changes its text.
         state_ttl_s: Seconds the server keeps an idle browser tab's conversation.
         concurrency_limit: Chat turns the app runs at once; the rest wait in the queue.
         queue_max_size: Events allowed to wait in the queue; beyond it visitors are told the
@@ -97,6 +99,7 @@ class Settings(BaseSettings):
     prefix_cache: bool = False
     tool_call_open: str = Field(default="<tool_call>", min_length=1)
     tool_call_close: str = Field(default="</tool_call>", min_length=1)
+    thinking_rotate_s: float = Field(default=4.0, gt=0)
     state_ttl_s: int = Field(default=3600, ge=1)
     concurrency_limit: int = Field(default=4, ge=1)
     queue_max_size: int = Field(default=20, ge=1)

@@ -42,6 +42,7 @@ def test_limits_and_model_settings_have_documented_defaults() -> None:
     s = Settings(_env_file=None)
     assert (s.concurrency_limit, s.queue_max_size, s.custom_timeout_s) == (4, 20, 30)
     assert (s.message_max_chars, s.import_max_bytes, s.state_ttl_s) == (4000, 1_000_000, 3600)
+    assert s.thinking_rotate_s == 4
     assert s.zerogpu_model_id == "Qwen/Qwen3-4B-Instruct-2507"
     assert (s.zerogpu_model_revision, s.zerogpu_max_new_tokens) == (None, 1024)
     assert s.zerogpu_gpu_duration_s == 60
@@ -50,9 +51,11 @@ def test_limits_and_model_settings_have_documented_defaults() -> None:
 
 def test_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLANNER_MESSAGE_MAX_CHARS", "50")
+    monkeypatch.setenv("PLANNER_THINKING_ROTATE_S", "1.5")
     monkeypatch.setenv("PLANNER_ZEROGPU_MODEL_REVISION", "abc123")
     s = Settings(_env_file=None)
     assert (s.message_max_chars, s.zerogpu_model_revision) == (50, "abc123")
+    assert s.thinking_rotate_s == 1.5
 
 
 def test_a_limit_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:

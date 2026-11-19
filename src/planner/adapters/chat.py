@@ -7,7 +7,10 @@ chat messages, so tests drive it without a browser.
 
 from __future__ import annotations
 
+import contextvars
 import logging
+import queue
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -17,7 +20,7 @@ from uuid import uuid4
 from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit, forget_secret
 from planner.adapters.session import Done, Event, Session, Stage, Token
 from planner.adapters.transcript import Turn
-from planner.adapters.views import Message, call_message
+from planner.adapters.views import Message, call_message, thinking
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -152,6 +155,7 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
     *,
     said: str,
     signed_in: bool,
+    rotate_s: float,
 ) -> Iterator[History]:
     """Run one turn and yield the chat after each token and each call stage.
 
@@ -165,6 +169,7 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
         events: Starts the session's stream; called inside the turn so failures are caught.
         said: What the user said or answered, for the transcript.
         signed_in: Whether the visitor is signed in, which changes how a failure is explained.
+        rotate_s: Seconds of silence before the pending line changes its text.
 
     Yields:
         The whole chat each time it changes.
@@ -181,8 +186,11 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
     if LOG.isEnabledFor(logging.DEBUG):  # what the user said is user data: DEBUG only
         emit(LOG, "turn_input", level=logging.DEBUG, text=said)
     try:
-        for event in bind(turn_id, session, events()):
+        yield shown.frame()
+        for event in _heartbeat(bind(turn_id, session, events()), rotate_s):
             match event:
+                case Tick():
+                    shown.tick += 1
                 case Token(text):
                     shown.token(text)
                 case Stage(record):
@@ -191,15 +199,10 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
                 case Done(reply, usage):
                     turn.reply, turn.confirm, turn.usage = reply.text, reply.confirm, usage
                     tab.pending = reply.confirm
-                    shown.done(reply.text, waiting=reply.confirm is not None)
-                    outcome = "confirm_pending" if reply.confirm else "reply"
                     turn.cost = backend.cost(usage, tab.custom) if usage else None
-                    if turn.cost and reply.text:
-                        shown.chat[-1] = {
-                            **shown.chat[-1],
-                            "content": f"{shown.chat[-1]['content']}\n\n*{turn.cost}*",
-                        }
-            yield list(shown.chat)
+                    shown.done(reply.text, waiting=reply.confirm is not None, note=turn.cost)
+                    outcome = "confirm_pending" if reply.confirm else "reply"
+            yield shown.frame()
     except Exception as exc:
         activate(turn_id, session)
         note = backend.explain(exc, signed_in=signed_in, custom=tab.custom is not None)
@@ -211,7 +214,8 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
         outcome = "backend_error"
         turn.error = note
         shown.chat.append({"role": "assistant", "content": note})
-        yield list(shown.chat)
+        shown.busy = False
+        yield shown.frame()
     finally:
         turn.seconds = time.perf_counter() - started
         tab.turns.append(turn)
@@ -228,6 +232,9 @@ class _Shown:
     open_bubble: bool = False  # whether the last message is a reply still growing token by token
     calls: list[CallRecord] = field(default_factory=list)  # the stages of the call in progress
     row: int = -1  # where that call's row sits in the chat
+    busy: bool = True  # nothing to read yet, so the page shows the pending line
+    tool: str | None = None  # the call about to run, named in the pending line
+    tick: int = 0
 
     def resume(self, stages: list[CallRecord]) -> None:
         """Pick up the row of the call that was waiting for the user's answer, to update it."""
@@ -241,8 +248,15 @@ class _Shown:
             first = max(i for i, r in enumerate(stages) if r.stage == "check")
             self.calls, self.row = stages[first:], waiting[-1]
 
+    def frame(self) -> History:
+        """The chat to show now, with the pending line last while there is nothing to read."""
+        if self.busy:
+            return [*self.chat, thinking(self.tick, self.tool)]
+        return list(self.chat)
+
     def token(self, text: str) -> None:
         """Grow the reply bubble, opening it first if the last message is not one."""
+        self.busy = False
         if self.open_bubble:
             self.chat[-1] = {**self.chat[-1], "content": self.chat[-1]["content"] + text}
         else:
@@ -257,12 +271,66 @@ class _Shown:
         self.calls.append(record)
         self.chat[self.row] = call_message(self.calls)
         self.open_bubble = False
+        self.busy = True
+        self.tool = record.tool if _still_running(record) else None
 
-    def done(self, text: str, *, waiting: bool) -> None:
+    def done(self, text: str, *, waiting: bool, note: str | None) -> None:
         """Settle the last bubble to the reply, marking the call's row if it awaits an answer."""
+        self.busy = False
         if waiting and self.calls:
             self.chat[self.row] = call_message(self.calls, waiting=True)
         self.chat = _settle(self.chat, text, open_bubble=self.open_bubble)
+        if note and text:
+            content = f"{self.chat[-1]['content']}\n\n*{note}*"
+            self.chat[-1] = {**self.chat[-1], "content": content}
+
+
+def _still_running(record: CallRecord) -> bool:
+    """Whether the call is accepted or approved and so about to run, as opposed to over."""
+    return record.outcome in {"accepted", "approved"}
+
+
+@dataclass(frozen=True)
+class Tick:
+    """No event arrived for a while: time to rotate the pending text."""
+
+
+def _heartbeat(events: Iterator[Event], every: float) -> Iterator[Event | Tick]:
+    """Yield `events`, plus a `Tick` each time `every` seconds pass without one.
+
+    The events are produced on a helper thread (in a copy of this context, so logs stay tagged)
+    because a blocked model call cannot yield; if the consumer stops early, the thread ends after
+    its current event.
+    """
+    box: queue.Queue[Event | BaseException | None] = queue.Queue()
+    stop = threading.Event()
+
+    def pump() -> None:
+        try:
+            for event in events:
+                if stop.is_set():
+                    return
+                box.put(event)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the consumer's thread
+            box.put(exc)
+        finally:
+            box.put(None)
+
+    threading.Thread(target=contextvars.copy_context().run, args=(pump,), daemon=True).start()
+    try:
+        while True:
+            try:
+                item = box.get(timeout=every)
+            except queue.Empty:
+                yield Tick()
+                continue
+            if item is None:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        stop.set()
 
 
 def _log_turn_end(turn: Turn, outcome: str) -> None:
