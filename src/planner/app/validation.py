@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -28,7 +28,7 @@ from planner.app.tools.args import (
     UpdateTaskArgs,
 )
 from planner.domain.errors import ErrorCode, Issue
-from planner.domain.models import ANYWHERE, BaseData, SessionState
+from planner.domain.models import ANYWHERE, BaseData, SessionState, TaskType
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -54,6 +54,16 @@ _CODE_BY_PYDANTIC_TYPE: Final[dict[str, ErrorCode]] = {
     "date_from_datetime_inexact": ErrorCode.BAD_DATETIME,
     "date_type": ErrorCode.BAD_DATETIME,
 }
+
+
+class _TimedTask(Protocol):
+    """Anything with a start and a deadline: a new task's arguments or a stored task."""
+
+    @property
+    def earliest_start(self) -> datetime | None: ...
+
+    @property
+    def deadline(self) -> datetime | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +199,22 @@ def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]
     return list(model.model_fields)
 
 
+def _task_consistency(prefix: str, task_type: TaskType, fields: _TimedTask) -> list[Issue]:
+    """Cross-field checks on a whole task, as it would be after the call."""
+    issues = []
+    if task_type is TaskType.FIXED_EVENT and fields.earliest_start is None:
+        message = "a fixed event needs its start time here; ask the user for it"
+        issues.append(Issue(ErrorCode.MISSING_ARG, f"{prefix}earliest_start", message))
+    if (
+        fields.earliest_start is not None
+        and fields.deadline is not None
+        and fields.deadline < fields.earliest_start
+    ):
+        message = "the deadline is before the earliest start"
+        issues.append(Issue(ErrorCode.BAD_VALUE, f"{prefix}deadline", message))
+    return issues
+
+
 @dataclass(frozen=True, slots=True)
 class _MeaningChecker:
     """Stage 2: checks that need the current state and reference data."""
@@ -205,6 +231,7 @@ class _MeaningChecker:
                     *self._in_horizon(args.earliest_start, "earliest_start"),
                     *self._known_place(args.place, "place", allow_anywhere=True),
                     *self._known_tasks(args.prerequisites, "prerequisites"),
+                    *_task_consistency("", args.type or TaskType.FLEXIBLE, args),
                 ]
             case UpdateTaskArgs():
                 return self._check_update(args)
@@ -249,6 +276,10 @@ class _MeaningChecker:
                         ErrorCode.CYCLE, "fields.prerequisites", "would create a dependency cycle"
                     )
                 )
+        current = self.state.task(args.task_id)
+        if current is not None:
+            merged = current.model_copy(update=patch.model_dump(exclude_none=True))
+            issues += _task_consistency("fields.", merged.type, merged)
         return issues
 
     def _in_horizon(self, value: datetime | None, field: str) -> list[Issue]:

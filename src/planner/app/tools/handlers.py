@@ -46,8 +46,9 @@ class ToolResult:
 
 def add_task(state: SessionState, args: AddTaskArgs) -> ToolResult:
     """Add a task with a fresh id. Unstated type is flexible and unstated place is anywhere."""
+    number = _next_number(state)
     task = Task(
-        id=_next_id(state),
+        id=f"T{number}",
         title=args.title,
         type=args.type or TaskType.FLEXIBLE,
         duration_min=args.duration_min,
@@ -58,21 +59,28 @@ def add_task(state: SessionState, args: AddTaskArgs) -> ToolResult:
     )
     note = "" if task.duration_min else " It has no duration yet; ask the user for one."
     return ToolResult(
-        state.with_tasks((*state.tasks, task)), f"Added {task.id}: {task.title}.{note}"
+        state.with_tasks((*state.tasks, task), last_task_number=number),
+        f"Added {task.id}: {task.title}.{note}",
     )
 
 
 def update_task(state: SessionState, args: UpdateTaskArgs) -> ToolResult:
     """Change the given fields of a task."""
     changes = args.fields.model_dump(exclude_none=True)
-    tasks = tuple(t.model_copy(update=changes) if t.id == args.task_id else t for t in state.tasks)
+    tasks = tuple(
+        Task.model_validate({**t.model_dump(), **changes}) if t.id == args.task_id else t
+        for t in state.tasks
+    )
     return ToolResult(state.with_tasks(tasks), f"Updated {args.task_id}: {', '.join(changes)}.")
 
 
 def delete_task(state: SessionState, args: DeleteTaskArgs) -> ToolResult:
     """Delete one task, or all of them. Confirmation is the caller's job, not this function's."""
+    used = _highest_number(state)
     if args.task_id == DELETE_ALL:
-        return ToolResult(state.with_tasks(()), f"Deleted all {len(state.tasks)} tasks.")
+        return ToolResult(
+            state.with_tasks((), last_task_number=used), f"Deleted all {len(state.tasks)} tasks."
+        )
     remaining = tuple(
         t.model_copy(
             update={"prerequisites": tuple(p for p in t.prerequisites if p != args.task_id)}
@@ -80,7 +88,9 @@ def delete_task(state: SessionState, args: DeleteTaskArgs) -> ToolResult:
         for t in state.tasks
         if t.id != args.task_id
     )
-    return ToolResult(state.with_tasks(remaining), f"Deleted {args.task_id}.")
+    return ToolResult(
+        state.with_tasks(remaining, last_task_number=used), f"Deleted {args.task_id}."
+    )
 
 
 def travel_time(state: SessionState, base: BaseData, args: TravelTimeArgs) -> ToolResult:
@@ -179,6 +189,11 @@ def _unscheduled_lines(
     ]
 
 
-def _next_id(state: SessionState) -> str:
+def _highest_number(state: SessionState) -> int:
+    """Highest `T<n>` number handed out so far, counting tasks that have since been deleted."""
     numbers = (int(m[1]) for t in state.tasks if (m := _GENERATED_ID.fullmatch(t.id)))
-    return f"T{max(numbers, default=0) + 1}"
+    return max(state.last_task_number, *numbers, 0)
+
+
+def _next_number(state: SessionState) -> int:
+    return _highest_number(state) + 1

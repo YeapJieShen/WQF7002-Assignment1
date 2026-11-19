@@ -214,7 +214,17 @@ def test_task_without_duration_is_reported(state: SessionState, base: BaseData) 
 def test_unreachable_place_is_reported(state: SessionState, base: BaseData) -> None:
     far = _task("T1", 30, type="errand", place="library")
     from_grocery = state.model_copy(update={"location": "grocery"})
-    plan = plan_day(_with(from_grocery, far), base, THU)
+    no_route = base.model_copy(
+        update={
+            "travel": tuple(
+                leg
+                for leg in base.travel
+                if "library" not in {leg.origin, leg.destination}
+                or "grocery" not in {leg.origin, leg.destination}
+            )
+        }
+    )
+    plan = plan_day(_with(from_grocery, far), no_route, THU)
     assert "no route" in _reasons(plan)["T1"]
 
 
@@ -254,3 +264,35 @@ def test_recommend_now_ignores_fixed_events(state: SessionState, base: BaseData)
     rec = recommend_now(_with(state, event), base)
     assert rec.task_id is None
     assert rec.skipped == ()
+
+
+def test_deadline_at_midnight_gives_no_share_to_the_empty_day(
+    state: SessionState, base: BaseData
+) -> None:
+    # Deadline Fri 00:00 means Thursday is the last usable day: it must carry the whole task.
+    task = _task("T1", 240, deadline=datetime(2026, 10, 30, 0, 0))
+    plan = plan_day(_with(state, task, pace=Pace(distribution=1)), base, THU)
+    assert _minutes(plan, "T1") == 240
+
+
+def test_deadline_before_day_start_ends_the_task_the_day_before(
+    state: SessionState, base: BaseData
+) -> None:
+    task = _task("T1", 240, deadline=datetime(2026, 10, 30, 7, 0))
+    plan = plan_day(_with(state, task, pace=Pace(distribution=1)), base, THU)
+    assert _minutes(plan, "T1") == 240
+
+
+def test_deadline_already_passed_does_not_break_the_share(
+    state: SessionState, base: BaseData
+) -> None:
+    task = _task("T1", 240, deadline=datetime(2026, 10, 28, 12, 0))
+    plan = plan_day(_with(state, task, pace=Pace(distribution=1)), base, THU)
+    assert _reasons(plan)["T1"] == "its deadline has already passed"
+
+
+def test_fixed_event_without_a_start_is_reported(state: SessionState, base: BaseData) -> None:
+    exam = Task(id="T1", title="Exam", type=TaskType.FIXED_EVENT, duration_min=60)
+    plan = plan_day(_with(state, exam), base, THU)
+    assert plan.blocks == ()
+    assert "no start time" in _reasons(plan)["T1"]
