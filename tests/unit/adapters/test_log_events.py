@@ -20,7 +20,7 @@ def _capture(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def fields(caplog: pytest.LogCaptureFixture, event: str) -> list[dict[str, Any]]:
-    return [r.fields for r in caplog.records if r.getMessage() == event]  # type: ignore[attr-defined]
+    return [r.fields for r in caplog.records if r.getMessage() == event]  # type: ignore[attr-defined]  # fields is set by the logging adapter, not on LogRecord
 
 
 def everything(caplog: pytest.LogCaptureFixture) -> str:
@@ -119,7 +119,7 @@ def test_a_failing_tool_is_logged_with_its_stack(
     [act] = [r for r in caplog.records if r.getMessage() == "tool_act"]
     assert act.levelno == logging.ERROR
     assert act.exc_info is not None
-    assert act.fields["success"] is False  # type: ignore[attr-defined]
+    assert act.fields["success"] is False  # type: ignore[attr-defined]  # fields is set by the logging adapter, not on LogRecord
 
 
 def test_tool_arguments_appear_only_at_debug(

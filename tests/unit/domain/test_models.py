@@ -22,9 +22,9 @@ from planner.domain.models import (
 
 def test_base_data_is_immutable(base: BaseData) -> None:
     with pytest.raises(ValidationError):
-        base.config.slot_min = 9999  # type: ignore[misc]
+        base.config.slot_min = 9999  # type: ignore[misc]  # assigning to a frozen model must raise
     with pytest.raises(ValidationError):
-        base.places[0].name = "x"  # type: ignore[misc]
+        base.places[0].name = "x"  # type: ignore[misc]  # assigning to a frozen model must raise
 
 
 def test_models_reject_unknown_fields() -> None:
@@ -148,9 +148,9 @@ def test_duplicate_task_ids_are_rejected(state: SessionState) -> None:
 def test_weekday_limits_cannot_be_mutated_or_leak() -> None:
     pace = Pace(weekday_limit_min={Weekday.MON: 60})
     with pytest.raises(TypeError):
-        pace.weekday_limit_min[Weekday.TUE] = 1  # type: ignore[index]
+        pace.weekday_limit_min[Weekday.TUE] = 1  # type: ignore[index]  # the read-only mapping must refuse item assignment
     with pytest.raises(TypeError):
-        pace.weekday_limit_min.update({Weekday.TUE: 1})  # type: ignore[attr-defined]
+        pace.weekday_limit_min.update({Weekday.TUE: 1})  # type: ignore[attr-defined]  # update is blocked; the test checks it raises
     assert Pace().weekday_limit_min == {}
     assert hash(pace) == hash(Pace(weekday_limit_min={Weekday.MON: 60}))
 

@@ -222,7 +222,7 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
     Call this once while the Space starts: ZeroGPU wants models placed on cuda at startup and
     `@spaces.GPU` functions defined before the app launches. Needs the "space" dependencies.
     """
-    from threading import Thread  # noqa: PLC0415
+    from threading import Thread  # noqa: PLC0415 - kept with the Space-only imports below
 
     import spaces  # noqa: PLC0415 - optional; must load before torch starts CUDA
     from transformers import (  # noqa: PLC0415 - optional, heavy

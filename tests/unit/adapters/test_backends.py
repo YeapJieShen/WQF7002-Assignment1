@@ -75,7 +75,7 @@ def test_the_default_model_is_used_without_an_endpoint() -> None:
 def test_a_custom_endpoint_gets_its_own_client() -> None:
     model = local().model(CUSTOM)
     assert isinstance(model, _Redacting)
-    assert model.chat.kwargs["tool_choice"] == "auto"  # type: ignore[attr-defined]
+    assert model.chat.kwargs["tool_choice"] == "auto"  # type: ignore[attr-defined]  # the fake client's kwargs are not in the real type
     assert KEY not in repr(model)
 
 
@@ -184,7 +184,7 @@ def test_endpoints_by_default() -> None:
 
 
 def test_the_operators_keys_are_registered_with_the_logs_but_not_the_placeholder() -> None:
-    from planner.adapters import logs  # noqa: PLC0415
+    from planner.adapters import logs  # noqa: PLC0415 - only this test needs the logs module
 
     logs._SECRETS.clear()
     settings = Settings(

@@ -359,7 +359,7 @@ class Controller:
         )
         return f"Using {custom.model} at {custom.base_url}.", ""
 
-    def pace_changed(self, tab: Tab | None, *values: Any) -> pd.DataFrame:  # noqa: ANN401
+    def pace_changed(self, tab: Tab | None, *values: Any) -> pd.DataFrame:  # noqa: ANN401 - one value per pace control, of mixed types
         """Apply the pace controls to the session and return the updated chart."""
         live = _live(tab)
         daily, consecutive, long_break, distribution, hardest, *weekdays = values

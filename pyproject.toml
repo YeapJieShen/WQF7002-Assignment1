@@ -70,15 +70,21 @@ ignore = [
     "D213",     # conflicts with D212
     "COM812",   # conflicts with the formatter
     "ISC001",   # conflicts with the formatter
-    "CPY",
+    "CPY",      # no copyright headers; LICENSE covers the project
     "EM",       # exception message variables add noise for pydantic validator errors
-    "TRY003",
-    "TD",
-    "FIX",
+    "TRY003",   # messages are written inline at the raise; one class per message adds noise
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S311", "PLR2004", "ANN", "D", "SLF001", "DTZ"]  # DTZ: times are naive by design; S311: seeded example picks
+"tests/**" = [
+    "S101",     # tests assert
+    "S311",     # seeded example picks
+    "PLR2004",  # test data uses literal numbers and strings
+    "ANN",      # annotating every fixture pushes helpers to Any; mypy strict still checks them
+    "D",        # test names describe the behaviour; docstrings add little
+    "SLF001",   # tests check private helpers on purpose
+    "DTZ",      # times are naive by design
+]
 "scripts/**" = ["INP001", "T201"]  # standalone scripts run by path and print progress
 "space/**" = ["INP001"]  # the Space's entry point, run by path
 

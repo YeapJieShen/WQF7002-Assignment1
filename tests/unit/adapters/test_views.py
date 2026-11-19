@@ -47,7 +47,7 @@ def test_a_rejected_check_shows_its_reason_beside_a_cross() -> None:
 
 def test_accepted_declined_and_done_stages_read_plainly() -> None:
     def title(stage: str, outcome: str) -> str:
-        record = CallRecord(stage=stage, tool="delete_task", args="{}", outcome=outcome)  # type: ignore[arg-type]
+        record = CallRecord(stage=stage, tool="delete_task", args="{}", outcome=outcome)  # type: ignore[arg-type]  # stage and outcome are plain strs; CallRecord takes Literals
         return str(stage_message(record)["metadata"]["title"])
 
     assert title("check", "accepted") == "✅ delete_task · check: accepted"
