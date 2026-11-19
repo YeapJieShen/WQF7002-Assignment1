@@ -358,3 +358,27 @@ def test_creates_cycle_matches_oracle(
     assume(not any(_reaches(edges, p, n) for n, ps in edges.items() for p in ps))
     expected = any(p == task_id or _reaches(edges, p, task_id) for p in new)
     assert creates_cycle(_state(edges), task_id, new) is expected
+
+
+def test_fixed_event_needs_a_start_time(codes: Codes) -> None:
+    args = {"title": "Exam", "type": "fixed_event", "duration_min": 60}
+    assert codes("add_task", args) == [ErrorCode.MISSING_ARG]
+    assert codes("add_task", {**args, "earliest_start": "2026-10-29T09:00"}) == []
+
+
+def test_deadline_before_earliest_start_is_rejected_on_add(codes: Codes) -> None:
+    args = {"title": "x", "earliest_start": "2026-10-29T12:00", "deadline": "2026-10-29T10:00"}
+    assert codes("add_task", args) == [ErrorCode.BAD_VALUE]
+
+
+def test_update_cannot_turn_a_task_into_a_fixed_event_without_a_start(codes: Codes) -> None:
+    args = {"task_id": "T3", "fields": {"type": "fixed_event"}}
+    assert codes("update_task", args) == [ErrorCode.MISSING_ARG]
+
+
+def test_update_checks_the_merged_task(codes: Codes) -> None:
+    # T3 has no earliest_start; giving one after its deadline is a contradiction.
+    args = {"task_id": "T3", "fields": {"earliest_start": "2030-01-01T00:00"}}
+    assert ErrorCode.OUT_OF_HORIZON in codes("update_task", args)
+    late = {"task_id": "T3", "fields": {"earliest_start": "2026-11-03T09:00"}}
+    assert codes("update_task", late) == [ErrorCode.BAD_VALUE]

@@ -158,3 +158,20 @@ def test_set_location_names_an_unlisted_place_by_its_id(
     state: SessionState, base: BaseData
 ) -> None:
     assert "(mars)" in set_location(state, base, SetLocationArgs(place_id="mars")).message
+
+
+def test_deleting_the_newest_task_does_not_free_its_id(state: SessionState) -> None:
+    added = add_task(state, AddTaskArgs(title="x")).state  # T6
+    gone = delete_task(added, DeleteTaskArgs(task_id="T6")).state
+    assert add_task(gone, AddTaskArgs(title="y")).state.task("T7") is not None
+
+
+def test_deleting_all_tasks_does_not_restart_the_numbering(state: SessionState) -> None:
+    cleared = delete_task(state, DeleteTaskArgs(task_id="all")).state
+    assert add_task(cleared, AddTaskArgs(title="y")).state.task("T6") is not None
+
+
+def test_update_revalidates_the_merged_task(state: SessionState) -> None:
+    patch = TaskPatch(type=TaskType.FIXED_EVENT)
+    result = update_task(state, UpdateTaskArgs(task_id="T3", fields=patch))
+    assert result.state.task("T3") is not None

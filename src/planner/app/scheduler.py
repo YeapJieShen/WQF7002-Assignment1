@@ -214,12 +214,14 @@ class _DayPlanner:
         if task.type is not TaskType.FLEXIBLE:
             return total
         today = self.state.now.date()
-        last = (
-            task.deadline.date()
-            if task.deadline
-            else self.base.config.horizon_end(self.state.now).date()
-        )
-        days = (last - today).days + 1
+        cfg = self.base.config
+        if task.deadline is None:
+            last = cfg.horizon_end(self.state.now).date()
+        elif task.deadline.time() <= cfg.day_start:
+            last = task.deadline.date() - timedelta(days=1)  # nothing can be placed that day
+        else:
+            last = task.deadline.date()
+        days = max((last - today).days, 0) + 1
         offset = (day - today).days
         if offset >= days:
             return total
@@ -351,7 +353,14 @@ class _DayPlanner:
             and t.type is not TaskType.FIXED_EVENT
             and t.duration_min is None
         ]
-        return tuple(left + missing)
+        unstarted = [
+            Unscheduled(t.id, "has no start time yet; ask the user")
+            for t in self.state.tasks
+            if t.status is TaskStatus.TODO
+            and t.type is TaskType.FIXED_EVENT
+            and t.earliest_start is None
+        ]
+        return tuple(left + missing + unstarted)
 
     def _why(self, task: Task) -> str:
         if unmet := [p for p in task.prerequisites if not self._satisfied(p)]:
