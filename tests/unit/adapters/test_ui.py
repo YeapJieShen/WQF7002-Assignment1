@@ -434,3 +434,23 @@ def test_a_restart_releases_the_old_tabs_claim_on_the_key(
     ctl.connect(tab, "custom", "https://x.test/v1", "m", KEY)
     ctl.demo(tab)
     assert released == [tab.custom]
+
+
+def test_reset_to_defaults_restores_every_pace_control_and_the_session() -> None:
+    ctl = controller()
+    tab = boot(ctl)
+    values = (60, 25, 10, 0.2, True, *([30] * 7))
+    ctl.pace_changed(tab, *values)
+    *controls, chart = ctl.reset_pace(tab)
+    assert tab.session.state.pace == Pace()
+    assert tuple(controls) == pace_values(Pace())
+    assert len(chart.data[0].x) == SAMPLE_DAYS + 1
+
+
+def test_the_weekday_limits_are_always_visible_with_one_reset_button() -> None:
+    app = build_app(FakeBackend(ScriptedModel()), settings())
+    blocks = list(app.blocks.values())
+    numbers = [getattr(b, "label", "") for b in blocks if b.get_block_name() == "number"]
+    assert numbers[-7:] == [d.value.title() for d in Weekday]
+    assert not any(b.get_block_name() == "accordion" and "weekday" in str(b.label) for b in blocks)
+    assert [getattr(b, "value", None) for b in blocks].count("Reset to defaults") == 1

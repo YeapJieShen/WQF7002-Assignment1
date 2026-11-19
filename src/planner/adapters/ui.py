@@ -126,6 +126,7 @@ CSS: Final = """
   border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .usage { text-align: right; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+.limits input { font-size: var(--text-sm); }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
@@ -393,11 +394,21 @@ class Controller:
             weekdays=weekdays,
             current=live.session.state.pace,
         )
+        self._apply(live, pace)
+        return self.pace_chart(live.session.state)
+
+    def reset_pace(self, tab: Tab | None) -> tuple[Any, ...]:
+        """Put every pace control back to its default; returns the controls, then the chart."""
+        live = _live(tab)
+        self._apply(live, Pace())
+        state = live.session.state
+        return (*pace_values(state.pace), self.pace_chart(state))
+
+    def _apply(self, live: Tab, pace: Pace) -> None:
         try:
             live.session.update_session(now=self.clock() if live.real_clock else None, pace=pace)
         except RuntimeError as exc:
             gr.Warning(str(exc))
-        return self.pace_chart(live.session.state)
 
     # Chat.
 
@@ -591,14 +602,19 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 hardest = gr.Checkbox(
                     label="Hardest first", info="Among tasks without a deadline, longer first"
                 )
-                with (
-                    gr.Accordion("Limit per weekday (min); empty uses the daily limit", open=False),
-                    gr.Row(),
-                ):
+                gr.Markdown("Limit for each day (minutes). Blank days use the daily limit.")
+                with gr.Row(elem_classes="limits"):
                     per_day = [
-                        gr.Number(label=d.value.title(), precision=0, minimum=0, maximum=MAX_MIN)
+                        gr.Number(
+                            label=d.value.title(),
+                            precision=0,
+                            minimum=0,
+                            maximum=MAX_MIN,
+                            min_width=60,
+                        )
                         for d in WEEKDAYS
                     ]
+                reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
                 chart = gr.Plot(label="Pace", show_label=False)
         with gr.Sidebar(label="Model", open=False, position="right") as sidebar:
             gr.Markdown("### Model")
@@ -643,6 +659,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         apply_btn.click(
             ctl.connect, [tab, choice, url, model, key], [status, key], api_visibility="private"
         )
+        reset_btn.click(ctl.reset_pace, tab, [*pace, chart], api_visibility="private")
         gr.on(
             [c.input for c in pace],
             ctl.pace_changed,
