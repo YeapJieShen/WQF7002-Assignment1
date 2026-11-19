@@ -108,20 +108,18 @@ HELP_HTML: Final = (
     + '">Endpoint details <b>?</b></span>'
 )
 """The notice behind a small "?" that shows it on hover, so it does not fill the sidebar."""
-THEME: Final = gr.themes.Soft(
-    primary_hue="indigo",
-    secondary_hue="slate",
-    neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
-).set(block_label_background_fill="transparent", block_title_background_fill="transparent")
+THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
 CSS: Final = """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
 .header { flex-wrap: wrap; align-items: center; }
 .header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
 .toolbar { justify-content: flex-end; flex-wrap: nowrap; }
-.chip { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
-  padding: var(--spacing-sm) var(--spacing-xl); width: fit-content; flex: 0 0 auto !important; }
+.block.chip { border: 0; padding: 0; background: none; flex: 0 0 auto !important; }
+.chip:not(.block) { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
+  padding: var(--spacing-sm) var(--spacing-xl); width: fit-content; }
 .chip p { margin: 0; }
+.thought-group { min-width: 16rem; }
+.thought-group .title .md { flex: 1; }
 .badge { float: right; border-radius: var(--radius-sm); padding: 0 var(--spacing-md);
   color: white; font-size: var(--text-sm); }
 .badge.ok { background: var(--color-green-500); }
@@ -129,13 +127,17 @@ CSS: Final = """
 .badge.wait { background: var(--color-orange-500); }
 .badge.run { background: var(--color-blue-500); }
 .spinner { display: inline-block; width: 0.9em; height: 0.9em; margin-right: 0.5em;
-  border: 2px solid var(--border-color-primary); border-top-color: var(--color-accent);
+  background: conic-gradient(var(--primary-500) 0 25%, var(--border-color-primary) 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
   border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .usage { text-align: right; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
-.confirm-card { border: 2px solid var(--error-border-color) !important;
-  border-radius: var(--radius-lg); padding: var(--spacing-md); }
+.confirm-card { border-color: var(--color-orange-500) !important; }
+.confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
+.examples button, .example { border: 1px solid var(--border-color-primary) !important;
+  border-radius: var(--radius-lg); }
+.examples button:hover, .example:hover { border-color: var(--border-color-accent) !important; }
 """
 WEEKDAYS: Final = tuple(Weekday)
 # The most a pace control accepts is the domain's own bound on a number of minutes, read from the

@@ -220,7 +220,7 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
     )
     figure.update_layout(
         title="Planned minutes per day for a sample 10-hour task",
-        margin={"l": 40, "r": 20, "t": 50, "b": 40},
+        margin={"l": 50, "r": 50, "t": 50, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis={"tickmode": "array", "tickvals": list(chart["day"]), "tickformat": "%a %d %b"},
