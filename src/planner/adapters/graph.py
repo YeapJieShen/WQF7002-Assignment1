@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The agent loop as a LangGraph: model -> check -> confirm -> act, with a cap on repeated errors.
 
 One tool call is handled per model turn; the LLM client must disable parallel tool calls.

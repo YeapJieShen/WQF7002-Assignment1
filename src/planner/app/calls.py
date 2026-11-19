@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The audit trail of tool calls: one entry for each stage a call passes through."""
 
 from __future__ import annotations

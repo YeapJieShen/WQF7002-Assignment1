@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The `Backend` the app runs with: the deployment's default model plus the visitor's own endpoint.
 
 A custom endpoint is vetted by `endpoint_guard` (public https only). Its key lives only in its

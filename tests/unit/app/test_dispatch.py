@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 import pytest
 
 from planner.app.tools.args import TOOLS_BY_NAME

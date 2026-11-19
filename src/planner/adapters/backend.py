@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The seam between the UI and the model backends.
 
 The UI asks a `Backend` for a model and for the words to show about failures and cost; it never

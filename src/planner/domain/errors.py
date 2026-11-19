@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Typed error vocabulary shared by validation, policy checks and tools."""
 
 from __future__ import annotations

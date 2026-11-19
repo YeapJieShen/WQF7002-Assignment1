@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """A record of one tab's conversation, for download: every turn, every call stage, the settings.
 
 The custom endpoint's API key is never part of it: settings name the endpoint by URL and model.

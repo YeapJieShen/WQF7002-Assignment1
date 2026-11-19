@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The argument models are the one source for both shape validation and the LLM schema."""
 
 from planner.app.tools.args import (

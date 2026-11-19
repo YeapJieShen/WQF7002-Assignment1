@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Validation of model tool calls before anything runs.
 
 Two stages, both deterministic:

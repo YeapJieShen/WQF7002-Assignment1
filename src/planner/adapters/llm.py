@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The chat model: one client per endpoint, chained so the next one answers when a backend fails."""
 
 from __future__ import annotations

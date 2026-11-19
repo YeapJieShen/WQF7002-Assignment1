@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 import json
 from collections.abc import Iterator, Sequence
 from typing import Any

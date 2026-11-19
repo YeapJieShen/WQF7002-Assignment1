@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The Gradio app: chat, tasks and pace tabs, a header and a model settings sidebar.
 
 `Controller` holds the handlers as plain methods over a per-tab `Tab`, so tests drive them without
