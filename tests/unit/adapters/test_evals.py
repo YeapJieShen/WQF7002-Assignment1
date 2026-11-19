@@ -7,6 +7,8 @@ import openai
 import pytest
 from langchain_core.messages import AIMessage, AnyMessage
 
+from planner.adapters import evals
+from planner.adapters.backends import AppBackend
 from planner.adapters.config import Endpoint, Settings
 from planner.adapters.evals import Case, backend_label, load_cases, run_case, to_markdown
 from planner.adapters.session import Session
@@ -131,3 +133,32 @@ def test_a_failure_the_backend_does_not_explain_is_raised(
             lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]
             lambda _: None,
         )
+
+
+class ReplyingModel:
+    def invoke(self, messages: Sequence[AnyMessage], /) -> AIMessage:  # noqa: ARG002 - protocol
+        return AIMessage("ok")
+
+
+def test_a_multi_case_run_builds_the_backend_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    builds: list[Settings] = []
+
+    def counting_build(settings: Settings) -> AppBackend:
+        builds.append(settings)
+        return AppBackend(ReplyingModel(), zerogpu=False)
+
+    monkeypatch.setattr(evals, "build_backend", counting_build)
+    cases = tmp_path / "cases.toml"
+    cases.write_text(
+        "".join(
+            f'[[case]]\nid = "{i}"\nkind = "normal"\ninput = "hi"\nexpected = "?"\n\n'
+            for i in range(3)
+        ),
+        "utf-8",
+    )
+    out = tmp_path / "out"
+    evals.main([str(cases), "--out", str(out)])
+    assert len(builds) == 1
+    assert len(list(out.glob("*.json"))) == 1
