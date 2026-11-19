@@ -431,7 +431,7 @@ def test_the_toolbar_has_the_file_buttons_and_the_demo_lives_in_the_sidebar() ->
     toolbar = {
         _caption(b) for b in blocks if getattr(b.parent, "elem_classes", None) == ["toolbar"]
     }
-    assert toolbar == {"Export", "Import", "Transcript"}
+    assert toolbar == {"Save session", "Load session", "Download chat log"}
 
 
 def test_choosing_the_default_model_applies_at_once_and_hides_the_endpoint_fields() -> None:

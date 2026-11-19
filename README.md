@@ -39,8 +39,7 @@ http and private addresses; never set it on a public deployment (see
 
 The app starts empty on the real clock; "Try a demo" loads the sample persona. Tabs: Chat (every
 tool call appears inline as a collapsible row), Tasks (with read-only places and travel) and Pace
-(all pace settings with a live chart). The header exports and imports the session and downloads a
-transcript.
+(all pace settings with a live chart). The header saves and loads the session and downloads the chat log.
 
 ## Settings
 
