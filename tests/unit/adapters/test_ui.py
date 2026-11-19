@@ -15,6 +15,7 @@ from planner.adapters.config import Settings
 from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
     FILE_TOO_LARGE,
+    HELP_HTML,
     MARK_PASTE_JS,
     MAX_MIN,
     MESSAGE_TOO_LONG,
@@ -424,6 +425,31 @@ def test_the_toolbar_has_the_file_buttons_and_the_demo_lives_in_the_sidebar() ->
         _caption(b) for b in blocks if getattr(b.parent, "elem_classes", None) == ["toolbar"]
     }
     assert toolbar == {"Export", "Import", "Transcript"}
+
+
+def test_choosing_the_default_model_applies_at_once_and_hides_the_endpoint_fields() -> None:
+    ctl = controller()
+    tab = boot(ctl)
+    ctl.connect(tab, "custom", "https://x.test/v1", "m", KEY)
+    fields, status = ctl.choose(tab, "default")
+    assert fields["visible"] is False
+    assert status == "Using the default model."
+    assert tab.custom is None
+    fields, status = ctl.choose(tab, "custom")
+    assert fields["visible"] is True
+    assert tab.custom is None  # nothing changes until the visitor presses the button
+
+
+def test_the_model_choice_is_a_dropdown_and_the_charge_notice_hides_behind_a_help_mark() -> None:
+    app = build_app(FakeBackend(ScriptedModel()), settings())
+    blocks = list(app.blocks.values())
+    [dropdown] = [b for b in blocks if b.get_block_name() == "dropdown"]
+    assert [value for _, value in getattr(dropdown, "choices", [])] == ["default", "custom"]
+    assert not any(
+        "charge you" in str(getattr(b, "value", "")) and b.get_block_name() == "markdown"
+        for b in blocks
+    )
+    assert "charge you" in HELP_HTML
 
 
 def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
