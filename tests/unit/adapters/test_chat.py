@@ -44,7 +44,7 @@ def test_tokens_grow_one_bubble(state: SessionState, base: BaseData) -> None:
     backend, tab = make(model, state, base)
     frames = run(tab, backend, "hi")
     assert len(frames) > 2
-    assert frames[-1][-1]["content"] == "Hello there"
+    assert frames[-1][-1]["content"].startswith("Hello there\n\n")
     assert len([m for m in frames[-1] if m["role"] == "assistant"]) == 1
 
 
@@ -53,7 +53,9 @@ def test_the_cost_line_follows_the_reply_and_is_recorded(
 ) -> None:
     usage = {"input_tokens": 5, "output_tokens": 7, "total_tokens": 12}
     backend, tab = make(ScriptedModel(AIMessage("Hello", usage_metadata=usage)), state, base)
-    assert run(tab, backend, "hi")[-1][-1]["content"] == "Hello\n\n*12 tokens*"
+    reply = run(tab, backend, "hi")[-1][-1]["content"]
+    assert reply.startswith("Hello\n\n*12 tokens*\n\n")
+    assert reply.endswith("5 in / 7 out tokens</span>")  # this reply's own seconds and tokens
     assert tab.turns[0].cost == "12 tokens"
     assert tab.turns[0].usage is not None
     assert tab.turns[0].seconds >= 0
@@ -67,7 +69,7 @@ def test_each_stage_is_its_own_row_and_the_reply_comes_last(
     final = run(tab, backend, "add")[-1]
     assert [t.split(" <")[0] for t in titles(final) if t] == ["add_task"]  # one row for the call
     assert 'badge ok">done' in titles(final)[1]
-    assert final[-1]["content"] == "Added."
+    assert final[-1]["content"].startswith("Added.\n\n")
     assert [r.stage for r in tab.turns[0].stages] == ["check", "act"]
 
 
@@ -101,7 +103,7 @@ def test_a_confirmation_pauses_then_the_answer_finishes_it(
             rotate_s=60,
         )
     )[-1]
-    assert final[-1]["content"] == "Deleted."
+    assert final[-1]["content"].startswith("Deleted.")
     assert [t.said for t in tab.turns] == ["delete T4", "(confirmed)"]
     assert [t.split(" <")[0] for t in titles(final) if t] == ["delete_task"]
     assert 'badge ok">done' in titles(final)[-2]

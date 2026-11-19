@@ -20,7 +20,7 @@ from uuid import uuid4
 from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit, forget_secret
 from planner.adapters.session import Done, Event, Session, Stage, Token
 from planner.adapters.transcript import Turn
-from planner.adapters.views import Message, call_message, thinking
+from planner.adapters.views import Message, call_message, thinking, usage_footer
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -200,7 +200,10 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
                     turn.reply, turn.confirm, turn.usage = reply.text, reply.confirm, usage
                     tab.pending = reply.confirm
                     turn.cost = backend.cost(usage, tab.custom) if usage else None
-                    shown.done(reply.text, waiting=reply.confirm is not None, note=turn.cost)
+                    footer = usage_footer(time.perf_counter() - started, usage)
+                    shown.done(
+                        reply.text, waiting=reply.confirm is not None, note=turn.cost, footer=footer
+                    )
                     outcome = "confirm_pending" if reply.confirm else "reply"
             yield shown.frame()
     except Exception as exc:
@@ -274,14 +277,18 @@ class _Shown:
         self.busy = True
         self.tool = record.tool if _still_running(record) else None
 
-    def done(self, text: str, *, waiting: bool, note: str | None) -> None:
-        """Settle the last bubble to the reply, marking the call's row if it awaits an answer."""
+    def done(self, text: str, *, waiting: bool, note: str | None, footer: str) -> None:
+        """Settle the last bubble to the reply, marking the call's row if it awaits an answer.
+
+        A reply ends with its cost note and a footer of the turn's seconds and tokens.
+        """
         self.busy = False
         if waiting and self.calls:
             self.chat[self.row] = call_message(self.calls, waiting=True)
         self.chat = _settle(self.chat, text, open_bubble=self.open_bubble)
-        if note and text:
-            content = f"{self.chat[-1]['content']}\n\n*{note}*"
+        if text:
+            extra = f"\n\n*{note}*" if note else ""
+            content = f"{self.chat[-1]['content']}{extra}\n\n{footer}"
             self.chat[-1] = {**self.chat[-1], "content": content}
 
 

@@ -19,6 +19,7 @@ from planner.adapters.views import (
     task_rows,
     thinking,
     travel_rows,
+    usage_footer,
     usage_line,
 )
 from planner.app.calls import CallRecord
@@ -94,6 +95,13 @@ def test_the_pending_line_rotates_its_text_and_names_a_running_tool() -> None:
 def test_the_usage_line_gives_seconds_and_tokens() -> None:
     assert usage_line(3.24, Usage(1234, 56)) == "3.2 s · 1,234 in / 56 out tokens"
     assert usage_line(0.04, None) == "0.0 s"
+
+
+def test_the_usage_footer_wraps_the_line_for_the_page_to_place() -> None:
+    assert (
+        usage_footer(3.24, Usage(1, 2))
+        == '<span class="turn-usage">3.2 s · 1 in / 2 out tokens</span>'
+    )
 
 
 def test_examples_are_three_and_match_the_loaded_data(state: SessionState, base: BaseData) -> None:

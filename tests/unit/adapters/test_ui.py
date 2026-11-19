@@ -56,6 +56,11 @@ def chat(ctl: Controller, tab: Tab | None, text: str, profile: Any = None) -> li
     return list(ctl.chat(text, [], tab, profile))
 
 
+def reply(chat: list[dict[str, Any]]) -> str:
+    """The last message's text without its usage footer."""
+    return chat[-1]["content"].split('\n\n<span class="turn-usage">')[0]
+
+
 def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
     ctl = controller()
     tab, chatbot, box, tasks, chip, card, question, *rest = ctl.boot()
@@ -68,7 +73,7 @@ def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
     assert box["interactive"] is True
     assert card["visible"] is False
     assert question == ""
-    assert len(rest) == 13 + 1
+    assert len(rest) == 13
     assert len(rest[-1].data[0].x) == SAMPLE_DAYS + 1
 
 
@@ -103,18 +108,13 @@ def test_chat_streams_the_reply_and_refresh_shows_the_new_tasks() -> None:
     frames = chat(ctl, tab, "add a parcel task")
     assert frames[0][0] == [{"role": "user", "content": "add a parcel task"}]
     assert frames[0][1]["interactive"] is False
-    assert frames[-1][0][-1]["content"] == "Added."
-    box, tasks, chip, card, question, usage = ctl.refresh(tab)
+    assert reply(frames[-1][0]) == "Added."
+    box, tasks, chip, card, question = ctl.refresh(tab)
     assert any(row[1] == "Post parcel" for row in tasks)
     assert box["interactive"] is True
     assert card["visible"] is False
     assert (chip, question) == ("📍 Home", "")
-    assert re.fullmatch(r"\d+\.\d s", usage)  # the turn's seconds, outside the reply text
-
-
-def test_a_tab_with_no_turn_has_no_usage_line() -> None:
-    ctl = controller()
-    assert ctl.refresh(boot(ctl))[-1] == ""
+    assert re.search(r'<span class="turn-usage">\d+\.\d s</span>$', frames[-1][0][-1]["content"])
 
 
 def test_blank_and_whitespace_messages_do_nothing() -> None:
@@ -142,12 +142,12 @@ def test_a_delete_shows_the_card_then_the_answer_settles_it() -> None:
     ctl = controller(ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted.")))
     tab = ctl.demo(None)[0]
     history = chat(ctl, tab, "delete T4")[-1][0]
-    box, _, _, card, question, _ = ctl.refresh(tab)
+    box, _, _, card, question = ctl.refresh(tab)
     assert card["visible"] is True
     assert "T4" in question
     assert box["interactive"] is False
-    assert list(ctl.approve(tab, history))[-1][-1]["content"] == "Deleted."
-    box, tasks, _, card, _, _ = ctl.refresh(tab)
+    assert reply(list(ctl.approve(tab, history))[-1]) == "Deleted."
+    box, tasks, _, card, _ = ctl.refresh(tab)
     assert all(row[0] != "T4" for row in tasks)
     assert card["visible"] is False
     assert box["interactive"] is True
@@ -346,7 +346,7 @@ def test_a_caller_without_a_page_gets_a_tab_of_its_own() -> None:
     ctl = controller(ScriptedModel(AIMessage("Hello.")))
     frames = chat(ctl, None, "hi")
     assert isinstance(frames[0][2], Tab)
-    assert frames[-1][0][-1]["content"] == "Hello."
+    assert reply(frames[-1][0]) == "Hello."
 
 
 # --- limits --------------------------------------------------------------------------------
@@ -356,7 +356,7 @@ def test_the_agent_gives_up_after_the_configured_rejections() -> None:
     model = ScriptedModel(*[call("nope", {}) for _ in range(5)])
     ctl = controller(model, max_rejections=1)
     frames = chat(ctl, boot(ctl), "do it")
-    assert frames[-1][0][-1]["content"] == GAVE_UP
+    assert reply(frames[-1][0]) == GAVE_UP
     assert len(list(model._script)) == 4  # one call used, not three
 
 
@@ -373,7 +373,7 @@ def test_a_message_over_the_limit_is_refused_with_both_numbers() -> None:
 
 def test_a_message_at_the_limit_goes_through() -> None:
     ctl = controller(ScriptedModel(AIMessage("ok")), message_max_chars=10)
-    assert chat(ctl, boot(ctl), "x" * 10)[-1][0][-1]["content"] == "ok"
+    assert reply(chat(ctl, boot(ctl), "x" * 10)[-1][0]) == "ok"
 
 
 def test_the_message_box_and_the_queue_use_the_settings() -> None:
