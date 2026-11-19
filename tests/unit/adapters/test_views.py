@@ -13,6 +13,7 @@ from planner.adapters.views import (
     SAMPLE_MIN,
     THINKING_WORDS,
     call_message,
+    edge_labels,
     examples,
     monotone_curve,
     pace_chart,
@@ -159,10 +160,15 @@ def test_the_places_graph_shows_each_places_edges_on_hover(base: BaseData) -> No
     assert list(nodes.text) == [p.name for p in base.places]
     assert nodes.marker.size >= NODE_SIZE
     pairs = {frozenset((leg.origin, leg.destination)) for leg in base.travel}
-    assert len(middles.hovertext) == len(pairs)
+    assert len(middles.hovertemplate) == len(pairs)
+    assert list(middles.text) == edge_labels(base)
+    assert len(edge_labels(base)) == len(pairs)
+    assert all(re.fullmatch(r"\d+ min", label) for label in edge_labels(base))
     assert edges.x.count(None) == len(pairs)
-    assert any("drive 30 min, transit 55 min" in t for t in middles.hovertext)
-    home = nodes.hovertext[0]
+    assert any("drive 30 min<br>transit 55 min<extra></extra>" in t for t in middles.hovertemplate)
+    assert all(t.startswith("<b>") and t.endswith("<extra></extra>") for t in middles.hovertemplate)
+    assert middles.hoverlabel.bgcolor == nodes.hoverlabel.bgcolor == "#ffffff"
+    home = nodes.hovertemplate[0]
     assert home.startswith(f"<b>{base.places[0].name}</b>")
     assert home.count("<br>") == sum(base.places[0].id in p for p in pairs)
 
