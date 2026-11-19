@@ -38,6 +38,10 @@ if TYPE_CHECKING:
 DELETE_ALL: Final = "all"
 """Value of `delete_task.task_id` that targets every task."""
 
+_NOTHING_TO_DELETE: Final = Issue(
+    ErrorCode.UNKNOWN_TASK, "task_id", "there are no tasks to delete; the list is already empty"
+)
+
 _CODE_BY_PYDANTIC_TYPE: Final[dict[str, ErrorCode]] = {
     "missing": ErrorCode.MISSING_ARG,
     "extra_forbidden": ErrorCode.UNEXPECTED_ARG,
@@ -237,7 +241,7 @@ class _MeaningChecker:
                 return self._check_update(args)
             case DeleteTaskArgs():
                 if args.task_id == DELETE_ALL:
-                    return []
+                    return [] if self.state.tasks else [_NOTHING_TO_DELETE]
                 return self._known_tasks((args.task_id,), "task_id")
             case TravelTimeArgs():
                 return [

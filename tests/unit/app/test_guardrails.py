@@ -40,3 +40,12 @@ def test_deleting_one_task_names_it(state: SessionState, base: BaseData) -> None
 def test_deleting_everything_states_how_many(state: SessionState, base: BaseData) -> None:
     question = _question("delete_task", {"task_id": "all"}, state, base)
     assert question == f"Delete all {len(state.tasks)} tasks? This cannot be undone."
+
+
+def test_deleting_everything_from_an_empty_list_is_refused_not_confirmed(
+    state: SessionState, base: BaseData
+) -> None:
+    empty = state.model_copy(update={"tasks": ()})
+    verdict = validate_call("delete_task", {"task_id": "all"}, empty, base)
+    assert not isinstance(verdict, Accepted)
+    assert "no tasks to delete" in verdict.message()
