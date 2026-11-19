@@ -28,6 +28,7 @@ from planner.adapters.ui import (
     real_now,
     size_text,
 )
+from planner.adapters.views import SAMPLE_DAYS
 from planner.domain.models import Pace, Weekday
 from tests.unit.adapters.fakes import Boom, FailingModel, FakeBackend, ScriptedModel, call
 
@@ -67,7 +68,7 @@ def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
     assert card["visible"] is False
     assert question == ""
     assert len(rest) == 13 + 1
-    assert len(rest[-1]) == 5
+    assert len(rest[-1].data[0].x) == SAMPLE_DAYS + 1
 
 
 def test_try_a_demo_loads_the_persona_on_a_simulated_clock() -> None:
@@ -219,7 +220,7 @@ def test_the_pace_controls_update_the_session_and_the_chart() -> None:
     values[0] = 120
     chart = ctl.pace_changed(tab, *values)
     assert tab.session.state.pace.daily_limit_min == 120
-    assert chart["minutes"].iloc[0] <= 120
+    assert chart.data[0].y[0] <= 120
 
 
 def test_pace_changes_wait_for_a_pending_confirmation() -> None:

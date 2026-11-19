@@ -30,7 +30,7 @@ from planner.adapters.views import (
     TASK_HEADERS,
     TRAVEL_HEADERS,
     examples,
-    pace_chart,
+    pace_figure,
     place_label,
     place_rows,
     task_rows,
@@ -43,7 +43,7 @@ from planner.domain.models import Minutes, Pace, SessionState, Weekday
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    import pandas as pd
+    import plotly.graph_objects as go
     from gradio.components.chatbot import ExampleMessage
 
     from planner.adapters.backend import Backend
@@ -248,8 +248,12 @@ class Controller:
             "",
             "",
             *pace_values(state.pace),
-            pace_chart(state, self.base),
+            self.pace_chart(state),
         )
+
+    def pace_chart(self, state: SessionState) -> go.Figure:
+        """The Pace chart for `state`, drawn in the theme's primary colour."""
+        return pace_figure(state, self.base, THEME.primary_500)
 
     def refresh(self, tab: Tab | None) -> tuple[Any, ...]:
         """What changes after a turn: the box, the tables, the location, the card, the usage."""
@@ -376,7 +380,7 @@ class Controller:
         )
         return f"Using {custom.model} at {custom.base_url}.", ""
 
-    def pace_changed(self, tab: Tab | None, *values: Any) -> pd.DataFrame:  # noqa: ANN401 - one value per pace control, of mixed types
+    def pace_changed(self, tab: Tab | None, *values: Any) -> go.Figure:  # noqa: ANN401 - one value per pace control, of mixed types
         """Apply the pace controls to the session and return the updated chart."""
         live = _live(tab)
         daily, consecutive, long_break, distribution, hardest, *weekdays = values
@@ -393,7 +397,7 @@ class Controller:
             live.session.update_session(now=self.clock() if live.real_clock else None, pace=pace)
         except RuntimeError as exc:
             gr.Warning(str(exc))
-        return pace_chart(live.session.state, self.base)
+        return self.pace_chart(live.session.state)
 
     # Chat.
 
@@ -595,13 +599,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                         gr.Number(label=d.value.title(), precision=0, minimum=0, maximum=MAX_MIN)
                         for d in WEEKDAYS
                     ]
-                chart = gr.BarPlot(
-                    x="day",
-                    y="minutes",
-                    title="Planned minutes per day for a sample 10-hour task",
-                    x_title="",
-                    y_title="Minutes",
-                )
+                chart = gr.Plot(label="Pace", show_label=False)
         with gr.Sidebar(label="Model", open=False, position="right") as sidebar:
             gr.Markdown("### Model")
             choice = gr.Radio(

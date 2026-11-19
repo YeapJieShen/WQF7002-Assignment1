@@ -10,6 +10,7 @@ from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
 import pandas as pd
+import plotly.graph_objects as go
 
 from planner.app import scheduler
 from planner.domain.models import Mode, Task, TaskStatus, TaskType, Weekday
@@ -32,6 +33,8 @@ SAMPLE_MIN: Final = 600
 SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
 EXAMPLES_SHOWN: Final = 3
+FILL_ALPHA: Final = 0.3
+"""How opaque the area under the Pace curve is."""
 THINKING_WORDS: Final = (
     "Thinking…",
     "Planning…",
@@ -191,7 +194,39 @@ def pace_chart(state: SessionState, base: BaseData) -> pd.DataFrame:
             planned = sum((b.end - b.start) // timedelta(minutes=1) for b in plan.blocks)
         minutes.append(planned)
         left -= min(planned, left)
-    return pd.DataFrame({"day": [f"{d:%a %d %b}" for d in days], "minutes": minutes})
+    return pd.DataFrame({"day": pd.to_datetime(days), "minutes": minutes})
+
+
+def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
+    """The pace chart as a smooth line over a translucent area, one tick per day in date order.
+
+    Args:
+        state: The session whose pace and clock the chart shows.
+        base: Places and travel times.
+        color: The line colour as `#rrggbb`; the app passes its theme's primary colour.
+    """
+    chart = pace_chart(state, base)
+    red, green, blue = (int(color[i : i + 2], 16) for i in (1, 3, 5))
+    figure = go.Figure(
+        go.Scatter(
+            x=chart["day"],
+            y=chart["minutes"],
+            mode="lines+markers",
+            line={"shape": "spline", "color": color},
+            fill="tozeroy",
+            fillcolor=f"rgba({red}, {green}, {blue}, {FILL_ALPHA})",
+            hovertemplate="%{x|%a %d %b}: %{y} min<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        title="Planned minutes per day for a sample 10-hour task",
+        margin={"l": 40, "r": 20, "t": 50, "b": 40},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"tickmode": "array", "tickvals": list(chart["day"]), "tickformat": "%a %d %b"},
+        yaxis={"title": "Minutes", "rangemode": "tozero"},
+    )
+    return figure
 
 
 def _drivable(base: BaseData, state: SessionState, place: Place) -> bool:

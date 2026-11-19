@@ -24,6 +24,7 @@ dependencies = [
     "langchain-core",
     "langchain-openai",
     "pandas>=3.1",
+    "plotly>=6",
     "pydantic>=2",
     "pydantic-settings",
 ]
@@ -109,6 +110,11 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "po
 [[tool.mypy.overrides]]
 # Space-only libraries, imported lazily in adapters/zerogpu.py; not installed for type checks.
 module = ["spaces", "transformers"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# plotly ships no type information (no py.typed marker); only views.py builds figures with it.
+module = ["plotly", "plotly.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

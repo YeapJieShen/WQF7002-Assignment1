@@ -12,6 +12,7 @@ from planner.adapters.views import (
     call_message,
     examples,
     pace_chart,
+    pace_figure,
     place_label,
     place_rows,
     task_rows,
@@ -108,6 +109,23 @@ def test_examples_for_an_empty_session_offer_adding_tasks(base: BaseData) -> Non
     every = {e["text"] for seed in range(40) for e in examples(empty, base, random.Random(seed))}
     assert any(t.startswith("Add") for t in every)
     assert not any(t.startswith("Mark") for t in every)
+
+
+def test_the_pace_chart_days_are_dates_in_order(state: SessionState, base: BaseData) -> None:
+    days = list(pace_chart(state, base)["day"])
+    assert days == sorted(days)
+    assert days[0].date() == state.now.date()
+
+
+def test_the_pace_figure_is_a_smooth_filled_line_with_one_tick_per_day(
+    state: SessionState, base: BaseData
+) -> None:
+    figure = pace_figure(state, base, "#336699")
+    [line] = figure.data
+    assert (line.line.shape, line.fill, line.line.color) == ("spline", "tozeroy", "#336699")
+    assert line.fillcolor == "rgba(51, 102, 153, 0.3)"
+    assert list(figure.layout.xaxis.tickvals) == list(line.x)
+    assert len(line.x) == SAMPLE_DAYS + 1
 
 
 def test_the_pace_chart_plans_the_sample_task_day_by_day(
