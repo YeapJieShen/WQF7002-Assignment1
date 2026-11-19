@@ -394,3 +394,9 @@ def test_a_custom_endpoint_gets_the_custom_timeout() -> None:
     ctl.connect(tab, "custom", "https://x.test/v1", "m", KEY)
     assert tab.custom is not None
     assert tab.custom.timeout_s == 12
+
+
+def test_the_sidebar_toggle_bypasses_the_queue() -> None:
+    app = build_app(FakeBackend(ScriptedModel()), settings())
+    [toggle] = [f for f in app.fns.values() if f.name == "<lambda>" and f.queue is False]
+    assert toggle.api_visibility == "private"
