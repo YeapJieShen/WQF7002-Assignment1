@@ -27,7 +27,7 @@ def run(tab: Tab, backend: FakeBackend, text: str, *, signed_in: bool = False) -
 
 
 def titles(chat: list[Any]) -> list[str]:
-    return [m.get("metadata", {}).get("title", "") for m in chat]
+    return [(m.get("metadata") or {}).get("title", "") for m in chat]
 
 
 def test_tokens_grow_one_bubble(state: SessionState, base: BaseData) -> None:
@@ -56,8 +56,8 @@ def test_each_stage_is_its_own_row_and_the_reply_comes_last(
     model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
     backend, tab = make(model, state, base, price=None)
     final = run(tab, backend, "add")[-1]
-    assert any("add_task · check" in t for t in titles(final))
-    assert any("add_task · act" in t for t in titles(final))
+    assert [t.split(" <")[0] for t in titles(final) if t] == ["add_task"]  # one row for the call
+    assert 'badge ok">done' in titles(final)[1]
     assert final[-1]["content"] == "Added."
     assert [r.stage for r in tab.turns[0].stages] == ["check", "act"]
 
@@ -68,7 +68,7 @@ def test_a_rejected_call_is_shown_and_recorded_with_its_reason(
     model = ScriptedModel(call("set_location", {"place_id": "mars"}), AIMessage("Sorry."))
     backend, tab = make(model, state, base, price=None)
     final = run(tab, backend, "I am on mars")[-1]
-    assert any("❌" in t and "set_location" in t for t in titles(final))
+    assert any("set_location" in t and 'badge bad">rejected' in t for t in titles(final))
     assert tab.turns[0].stages[0].outcome.startswith("rejected")
 
 
@@ -93,7 +93,8 @@ def test_a_confirmation_pauses_then_the_answer_finishes_it(
     )[-1]
     assert final[-1]["content"] == "Deleted."
     assert [t.said for t in tab.turns] == ["delete T4", "(confirmed)"]
-    assert any("confirm: approved" in t for t in titles(final))
+    assert [t.split(" <")[0] for t in titles(final) if t] == ["delete_task"]
+    assert 'badge ok">done' in titles(final)[-2]
 
 
 def test_an_explained_failure_becomes_a_message_and_is_recorded(
@@ -146,3 +147,40 @@ def test_releasing_an_endpoint_stops_scrubbing_its_key_only_when_unused() -> Non
     assert logs.scrub("sk-release-me-123") == logs.REDACTED
     release_endpoint(mine)
     assert logs.scrub("sk-release-me-123") == "sk-release-me-123"
+
+
+def answer(tab: Tab, backend: FakeBackend, history: list[Any]) -> list[Any]:
+    tab.pending = None
+    return list(
+        stream_turn(
+            tab,
+            backend,
+            history,
+            lambda: tab.session.resume_stream(approved=True),
+            said="(confirmed)",
+            signed_in=False,
+        )
+    )[-1]
+
+
+def test_an_answer_updates_the_waiting_row_in_place(state: SessionState, base: BaseData) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
+    backend, tab = make(model, state, base, price=None)
+    asked = run(tab, backend, "delete T4")[-1]
+    assert "waiting for you" in titles(asked)[-1]
+    final = answer(tab, backend, asked)
+    rows = [t for t in titles(final) if "delete_task" in t]
+    assert len(rows) == 1
+    assert 'badge ok">done' in rows[0]
+
+
+def test_an_answer_works_when_the_browser_sends_no_metadata_on_plain_messages(
+    state: SessionState, base: BaseData
+) -> None:
+    model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
+    backend, tab = make(model, state, base, price=None)
+    asked = run(tab, backend, "delete T4")[-1]
+    sent = [{**m, "metadata": m.get("metadata")} for m in asked]  # plain messages carry None
+    assert any(m["metadata"] is None for m in sent)
+    final = answer(tab, backend, sent)
+    assert next(t for t in titles(final) if "delete_task" in t).count("badge ok") == 1

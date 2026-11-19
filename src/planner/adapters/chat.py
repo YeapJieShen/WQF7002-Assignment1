@@ -17,7 +17,7 @@ from uuid import uuid4
 from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit, forget_secret
 from planner.adapters.session import Done, Event, Session, Stage, Token
 from planner.adapters.transcript import Turn
-from planner.adapters.views import Message, stage_message
+from planner.adapters.views import Message, call_message
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -27,10 +27,12 @@ if TYPE_CHECKING:
     from planner.adapters.backend import Backend
     from planner.adapters.config import Endpoint
     from planner.adapters.graph import Model
+    from planner.app.calls import CallRecord
     from planner.domain.models import BaseData, SessionState
 
 type History = list[Message]
 
+WAITING = "waiting for you"
 LOG = logging.getLogger("planner.chat")
 BACKEND_LOG = logging.getLogger("planner.backends")
 
@@ -169,8 +171,9 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
     """
     turn = Turn(said=said)
     started = time.perf_counter()
-    chat = list(history)
-    open_bubble = False
+    shown = _Shown(list(history))
+    if tab.turns and tab.turns[-1].confirm:
+        shown.resume(tab.turns[-1].stages)
     turn_id, session = uuid4().hex, tab.session.log_id
     outcome = "error"
     activate(turn_id, session)
@@ -181,27 +184,22 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
         for event in bind(turn_id, session, events()):
             match event:
                 case Token(text):
-                    if open_bubble:
-                        chat[-1] = {**chat[-1], "content": chat[-1]["content"] + text}
-                    else:
-                        chat.append({"role": "assistant", "content": text})
-                        open_bubble = True
+                    shown.token(text)
                 case Stage(record):
                     turn.stages.append(record)
-                    chat.append(stage_message(record))
-                    open_bubble = False
+                    shown.stage(record)
                 case Done(reply, usage):
                     turn.reply, turn.confirm, turn.usage = reply.text, reply.confirm, usage
                     tab.pending = reply.confirm
-                    chat = _settle(chat, reply.text, open_bubble=open_bubble)
+                    shown.done(reply.text, waiting=reply.confirm is not None)
                     outcome = "confirm_pending" if reply.confirm else "reply"
                     turn.cost = backend.cost(usage, tab.custom) if usage else None
                     if turn.cost and reply.text:
-                        chat[-1] = {
-                            **chat[-1],
-                            "content": f"{chat[-1]['content']}\n\n*{turn.cost}*",
+                        shown.chat[-1] = {
+                            **shown.chat[-1],
+                            "content": f"{shown.chat[-1]['content']}\n\n*{turn.cost}*",
                         }
-            yield list(chat)
+            yield list(shown.chat)
     except Exception as exc:
         activate(turn_id, session)
         note = backend.explain(exc, signed_in=signed_in, custom=tab.custom is not None)
@@ -212,14 +210,59 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
             raise
         outcome = "backend_error"
         turn.error = note
-        chat.append({"role": "assistant", "content": note})
-        yield list(chat)
+        shown.chat.append({"role": "assistant", "content": note})
+        yield list(shown.chat)
     finally:
         turn.seconds = time.perf_counter() - started
         tab.turns.append(turn)
         activate(turn_id, session)
         _log_turn_end(turn, outcome)
         deactivate()
+
+
+@dataclass
+class _Shown:
+    """The chat as the page shows it during a turn: bubbles and one row per tool call."""
+
+    chat: History
+    open_bubble: bool = False  # whether the last message is a reply still growing token by token
+    calls: list[CallRecord] = field(default_factory=list)  # the stages of the call in progress
+    row: int = -1  # where that call's row sits in the chat
+
+    def resume(self, stages: list[CallRecord]) -> None:
+        """Pick up the row of the call that was waiting for the user's answer, to update it."""
+        # The browser sends `metadata: None` for plain messages, so a missing key is not enough.
+        waiting = [
+            i
+            for i, m in enumerate(self.chat)
+            if WAITING in (m.get("metadata") or {}).get("title", "")
+        ]
+        if waiting:
+            first = max(i for i, r in enumerate(stages) if r.stage == "check")
+            self.calls, self.row = stages[first:], waiting[-1]
+
+    def token(self, text: str) -> None:
+        """Grow the reply bubble, opening it first if the last message is not one."""
+        if self.open_bubble:
+            self.chat[-1] = {**self.chat[-1], "content": self.chat[-1]["content"] + text}
+        else:
+            self.chat.append({"role": "assistant", "content": text})
+            self.open_bubble = True
+
+    def stage(self, record: CallRecord) -> None:
+        """Start the call's row at its check and update it in place at each later stage."""
+        if record.stage == "check" or not self.calls:
+            self.calls, self.row = [], len(self.chat)
+            self.chat.append({})
+        self.calls.append(record)
+        self.chat[self.row] = call_message(self.calls)
+        self.open_bubble = False
+
+    def done(self, text: str, *, waiting: bool) -> None:
+        """Settle the last bubble to the reply, marking the call's row if it awaits an answer."""
+        if waiting and self.calls:
+            self.chat[self.row] = call_message(self.calls, waiting=True)
+        self.chat = _settle(self.chat, text, open_bubble=self.open_bubble)
 
 
 def _log_turn_end(turn: Turn, outcome: str) -> None:
