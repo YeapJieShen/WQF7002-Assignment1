@@ -14,10 +14,11 @@ All settings are environment variables with the `PLANNER_` prefix, or lines in a
 **Locally with Ollama (default).**
 
 ```bash
-conda activate wqf7002_assignment1        # Python >= 3.12
+conda create -n <env> python=3.12 && conda activate <env>
 pip install -e . --group dev
-ollama pull qwen3:4b-instruct             # default model (Qwen3-4B-Instruct-2507)
-planner                                   # or: python -m planner -> http://127.0.0.1:7860
+ollama pull qwen3:4b-instruct      # default local model (Qwen3-4B-Instruct-2507)
+planner                            # or: python -m planner -> http://127.0.0.1:7860
+# Full weights like the Space: pip install -r space/requirements.txt, then PLANNER_BACKEND=zerogpu
 ```
 
 **Locally on a GPU, without Ollama.** Runs Qwen3 in-process with transformers, as the Space does.
