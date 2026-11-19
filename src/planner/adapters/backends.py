@@ -39,6 +39,8 @@ ZEROGPU_DOCS: Final = "https://huggingface.co/docs/hub/spaces-zerogpu"
 BILLING: Final = "https://huggingface.co/settings/billing"
 BACKEND_DOWN: Final = "No language-model backend answered. Check that it is running."
 REDACTED: Final = "[key removed]"
+_AUTH_STATUSES: Final = frozenset({401, 403})
+_NOT_FOUND: Final = 404
 LOG = logging.getLogger("planner.backends")
 
 
@@ -121,7 +123,31 @@ class AppBackend:
             else:
                 hint = "Sign in with Hugging Face for more GPU time, or use your own endpoint."
             return f"The GPU is not available: {error.message}\n\n{hint} See {ZEROGPU_DOCS}"
-        return BACKEND_DOWN if isinstance(error, BACKEND_ERRORS) else None
+        return self._explain_configured(error)
+
+    def _explain_configured(self, error: Exception) -> str | None:
+        """Explain a failure of the operator's endpoints, naming the setting to fix."""
+        if isinstance(error, BACKEND_ERRORS):
+            return BACKEND_DOWN
+        if not isinstance(error, openai.APIStatusError):
+            return None
+        if error.status_code in _AUTH_STATUSES:  # the text may quote the key: leave it out
+            return (
+                f"The language-model endpoint refused the API key (HTTP {error.status_code}). "
+                "Check the key in the PLANNER_LLM_ENDPOINTS setting."
+            )
+        detail = error.message
+        if len(detail) > self.error_max_chars:
+            detail = detail[: self.error_max_chars] + "..."
+        if error.status_code == _NOT_FOUND:
+            return (
+                f"The language model was not found (HTTP 404): {detail}\n\n"
+                "Check the model name and base URL in the PLANNER_LLM_ENDPOINTS setting."
+            )
+        return (
+            f"The language-model endpoint returned an error (HTTP {error.status_code}): "
+            f"{detail}\n\nCheck the PLANNER_LLM_ENDPOINTS setting."
+        )
 
     def cost(self, usage: Usage, custom: Endpoint | None, /) -> str | None:
         """Return the tokens a custom endpoint used, which its provider may charge for."""

@@ -247,3 +247,31 @@ def test_the_custom_client_is_built_with_its_endpoint_timeout() -> None:
     model = local().model(CUSTOM.model_copy(update={"timeout_s": 7}))
     assert isinstance(model, _Redacting)
     assert model.timeout_s == 7
+
+
+def _status_error(status: int, message: str) -> openai.APIStatusError:
+    return openai.APIStatusError(
+        message, response=httpx2.Response(status, request=REQUEST), body=None
+    )
+
+
+def test_a_missing_model_names_the_model_and_the_setting() -> None:
+    error = _status_error(404, "model 'qwen3:4b' not found")
+    text = local().explain(error, signed_in=False, custom=False)
+    assert text is not None
+    assert "qwen3:4b" in text
+    assert "PLANNER_LLM_ENDPOINTS" in text
+
+
+def test_a_refused_key_on_the_default_endpoint_names_the_setting_not_the_key() -> None:
+    text = local().explain(_rejects_key(), signed_in=False, custom=False)
+    assert text is not None
+    assert KEY not in text
+    assert "PLANNER_LLM_ENDPOINTS" in text
+
+
+def test_another_provider_error_is_shown_cut_to_the_limit() -> None:
+    text = local().explain(_status_error(400, "x" * 1000), signed_in=False, custom=False)
+    assert text is not None
+    assert "HTTP 400" in text
+    assert "x" * 301 not in text
