@@ -5,6 +5,7 @@ Pure functions with no Gradio state, so tests check them directly.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -34,6 +35,8 @@ SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
 EXAMPLES_SHOWN: Final = 3
 FILL_ALPHA: Final = 0.3
+EDGE_ALPHA: Final = 0.35
+"""How opaque the edges of the Places graph are."""
 """How opaque the area under the Pace curve is."""
 THINKING_WORDS: Final = (
     "Thinking…",
@@ -225,6 +228,74 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis={"tickmode": "array", "tickvals": list(chart["day"]), "tickformat": "%a %d %b"},
         yaxis={"title": "Minutes", "rangemode": "tozero"},
+    )
+    return figure
+
+
+def places_figure(base: BaseData, color: str) -> go.Figure:
+    """The places as a read-only graph: a node per place, an edge per pair with its minutes.
+
+    Places sit on a circle (a fixed layout, so the picture never shifts). An edge is labelled with
+    the minutes of each mode between its two places; hovering a label names the modes.
+
+    Args:
+        base: Places and the travel table.
+        color: The colour as `#rrggbb`; the app passes its theme's primary colour.
+    """
+    angle = {p.id: 2 * math.pi * i / len(base.places) for i, p in enumerate(base.places)}
+    at = {pid: (math.cos(a), math.sin(a)) for pid, a in angle.items()}
+    legs: dict[tuple[str, str], list[str]] = {}
+    for leg in base.travel:
+        pair = (min(leg.origin, leg.destination), max(leg.origin, leg.destination))
+        text = f"{leg.mode.value} {leg.minutes}"
+        if text not in legs.setdefault(pair, []):
+            legs[pair].append(text)
+    lines_x: list[float | None] = []
+    lines_y: list[float | None] = []
+    for a, b in legs:
+        lines_x += [at[a][0], at[b][0], None]
+        lines_y += [at[a][1], at[b][1], None]
+    middles = [((at[a][0] + at[b][0]) / 2, (at[a][1] + at[b][1]) / 2) for a, b in legs]
+    labels = [" / ".join(t.rsplit(" ", 1)[1] for t in texts) for texts in legs.values()]
+    figure = go.Figure(
+        [
+            go.Scatter(
+                x=lines_x,
+                y=lines_y,
+                mode="lines",
+                line={"color": color, "width": 1},
+                opacity=EDGE_ALPHA,
+                hoverinfo="skip",
+            ),
+            go.Scatter(
+                x=[m[0] for m in middles],
+                y=[m[1] for m in middles],
+                mode="text",
+                text=labels,
+                textfont={"size": 10},
+                hovertext=[", ".join(f"{t} min" for t in texts) for texts in legs.values()],
+                hoverinfo="text",
+            ),
+            go.Scatter(
+                x=[at[p.id][0] for p in base.places],
+                y=[at[p.id][1] for p in base.places],
+                mode="markers+text",
+                text=[p.name for p in base.places],
+                textposition="top center",
+                marker={"size": 14, "color": color},
+                hoverinfo="skip",
+            ),
+        ]
+    )
+    axis = {"visible": False, "range": [-1.4, 1.4]}
+    figure.update_layout(
+        showlegend=False,
+        margin={"l": 10, "r": 10, "t": 10, "b": 10},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=axis,
+        yaxis={**axis, "scaleanchor": "x"},
+        height=480,
     )
     return figure
 
