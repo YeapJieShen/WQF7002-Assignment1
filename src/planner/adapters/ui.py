@@ -82,6 +82,18 @@ ARROW_JS: Final = f"""(text) => {{
   const arrow = document.querySelector("#{BOX_ID} button[data-testid=submit-button]");
   if (arrow) arrow.disabled = !(text || "").trim();
 }}"""
+_HINTS: Final = {
+    "save-btn": "Your tasks and settings as a file you can load later",
+    "load-btn": "Your tasks and settings as a file you can load later",
+    "log-btn": "The full conversation with every tool step, for reading; cannot be loaded back",
+}
+HINTS_JS: Final = (
+    "() => { const hints = "
+    + json.dumps(_HINTS)
+    + "; for (const [id, text] of Object.entries(hints)) {"
+    + " const el = document.getElementById(id); if (el) el.title = text; } }"
+)
+"""Hover hints for the toolbar buttons, which Gradio buttons cannot carry themselves."""
 LEAVE_JS: Final = """() => {
   window.addEventListener("beforeunload", (e) => {
     if (window.plannerHasChat) { e.preventDefault(); e.returnValue = ""; }
@@ -94,7 +106,7 @@ MB: Final = 1000 * KB
 MESSAGE_TOO_LONG: Final = (
     "Message is {actual:,} characters; the limit is {limit:,}. Shorten it or split it."
 )
-FILE_TOO_LARGE: Final = "File is {actual}; the limit is {limit}. Export a smaller session."
+FILE_TOO_LARGE: Final = "File is {actual}; the limit is {limit}. Save a smaller session."
 
 
 def size_text(size: int) -> str:
@@ -117,13 +129,30 @@ HELP_HTML: Final = (
     + "</span></span></div>"
 )
 """The notice behind a small "?": a tooltip on hover, focus or tap, so it stays out of the way."""
+_ICONS: Final = Path(__file__).resolve().parent.parent / "resources" / "icons"
+
+
+def _icon(name: str) -> str:
+    """Path of a toolbar icon shipped as package data."""
+    return str(_ICONS / f"{name}.svg")
+
+
 THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
 CSS: Final = """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
 .header { flex-wrap: wrap; align-items: center; }
-.header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
-.toolbar { justify-content: flex-end; flex-wrap: nowrap; }
-.block.chip { border: 0; padding: 0; background: none; flex: 0 0 auto !important; }
+.header > div:first-child { flex: 1 0 100% !important; }
+.toolbar { justify-content: flex-end; flex-wrap: nowrap; flex: 0 0 auto !important; width: auto;
+  margin-left: auto; }
+.toolbar button { flex-direction: row !important; flex-wrap: nowrap !important;
+  align-items: center; justify-content: center; white-space: nowrap; gap: var(--spacing-sm);
+  width: max-content !important; min-width: max-content !important;
+  padding: 0 var(--spacing-xl); }
+.toolbar button img { position: static !important; margin: 0 !important; flex: 0 0 auto; }
+@media (max-width: 640px) { .toolbar { flex: 1 1 100% !important; flex-wrap: wrap;
+  justify-content: flex-start; margin-left: 0; } }
+.block.chip { width: fit-content !important; border: 0; padding: 0; background: none;
+  flex: 0 0 auto !important; }
 .chip:not(.block) { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
   padding: var(--spacing-sm) var(--spacing-xl); width: fit-content; }
 .chip p { margin: 0; }
@@ -584,11 +613,31 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             gr.Markdown("# Planning delegate", min_width=220)
             chip = gr.Markdown(elem_classes="chip", scale=0, min_width=0, container=False)
             with gr.Row(elem_classes="toolbar"):
-                export_btn = gr.Button("Export", size="sm", scale=0, min_width=90)
-                import_btn = gr.UploadButton(
-                    "Import", file_types=[".json"], size="sm", scale=0, min_width=90
+                export_btn = gr.Button(
+                    "Save session",
+                    icon=_icon("save"),
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="save-btn",
                 )
-                transcript_btn = gr.Button("Transcript", size="sm", scale=0, min_width=90)
+                import_btn = gr.UploadButton(
+                    "Load session",
+                    icon=_icon("load"),
+                    file_types=[".json"],
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="load-btn",
+                )
+                transcript_btn = gr.Button(
+                    "Download chat log",
+                    icon=_icon("log"),
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="log-btn",
+                )
         download = gr.File(label="Download", visible=False)
         with gr.Tabs():
             with gr.Tab("Chat"):
@@ -712,6 +761,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         app.load(ctl.boot, None, reset, api_visibility="private")
         app.load(None, None, None, js=WATCH_PASTE_JS)
         app.load(None, None, None, js=LEAVE_JS)
+        app.load(None, None, None, js=HINTS_JS)
         app.load(None, box, None, js=ARROW_JS)
         box.change(None, box, None, js=ARROW_JS)
         chatbot.change(None, chatbot, None, js=CHAT_CHANGED_JS)
