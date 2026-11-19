@@ -15,6 +15,7 @@ from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
     FILE_TOO_LARGE,
     MARK_PASTE_JS,
+    MAX_MIN,
     MESSAGE_TOO_LONG,
     PASTE_MARK,
     SESSION_LOST,
@@ -406,3 +407,10 @@ def test_the_sidebar_toggle_bypasses_the_queue() -> None:
     app = build_app(FakeBackend(ScriptedModel()), settings())
     [toggle] = [f for f in app.fns.values() if f.name == "<lambda>" and f.queue is False]
     assert toggle.api_visibility == "private"
+
+
+def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
+    assert MAX_MIN == 24 * 60
+    assert Pace(daily_limit_min=MAX_MIN).daily_limit_min == MAX_MIN
+    with pytest.raises(ValueError, match="less than or equal"):
+        Pace(daily_limit_min=MAX_MIN + 1)

@@ -14,10 +14,10 @@ import random
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast, get_args
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import gradio as gr
-from pydantic import SecretStr
+from pydantic import SecretStr, TypeAdapter
 
 from planner.adapters.chat import History, Tab, new_tab, release_endpoint, stream_turn, use_endpoint
 from planner.adapters.config import DUMMY_API_KEY, Endpoint
@@ -118,8 +118,9 @@ CSS: Final = """
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
 WEEKDAYS: Final = tuple(Weekday)
-# The most a pace control accepts is the domain's own bound on a number of minutes.
-MAX_MIN: Final[int] = next(c.le for c in get_args(Minutes)[1].metadata if hasattr(c, "le"))
+# The most a pace control accepts is the domain's own bound on a number of minutes, read from the
+# schema Pydantic derives from `Minutes`, not from how the annotation happens to be assembled.
+MAX_MIN: Final[int] = TypeAdapter(Minutes).json_schema()["maximum"]
 
 
 def real_now() -> datetime:
