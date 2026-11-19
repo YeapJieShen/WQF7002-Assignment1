@@ -653,7 +653,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     label="Hardest first", info="Among tasks without a deadline, longer first"
                 )
                 gr.Markdown(
-                    "The chart: how a sample 10-hour task would be spread.", elem_classes="caption"
+                    "Example: how a 10-hour task is spread across the days.", elem_classes="caption"
                 )
                 chart = gr.Plot(label="Pace", show_label=False)
                 reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
