@@ -6,12 +6,18 @@ which looks for the module-level `demo`.
 
 from __future__ import annotations
 
+import logging
+
 from planner.adapters.backends import build_backend
 from planner.adapters.config import Settings
+from planner.adapters.logs import configure_logging, emit
 from planner.adapters.ui import CSS, THEME, build_app
 
 # Built at import, once: the ZeroGPU backend loads its model and registers `@spaces.GPU` here.
 settings = Settings()
+# The one place logging is set up. It runs here, not in build_app, so loading the model is logged.
+configure_logging(settings.log_level, settings.log_format)
+emit(logging.getLogger("planner.app"), "app_start", **settings.summary())
 demo = build_app(
     build_backend(settings), settings
 )  # pragma: no cover - building the layout starts nothing
