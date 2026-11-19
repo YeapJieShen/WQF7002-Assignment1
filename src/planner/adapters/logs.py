@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from collections import deque
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -49,6 +50,11 @@ def emit(
 ) -> None:
     """Log `event` with `fields`, which the formatters print as separate keys."""
     logger.log(level, event, extra={"fields": fields}, exc_info=exc_info, stacklevel=2)
+
+
+def elapsed_ms(started: float) -> float:
+    """Return the milliseconds since `started`, a `time.perf_counter()` reading."""
+    return round((time.perf_counter() - started) * 1000, 2)
 
 
 def session_hash(session_id: str) -> str:

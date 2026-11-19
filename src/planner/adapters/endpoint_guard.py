@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
-from typing import Final
+from typing import Any, Final
 from urllib.parse import urlsplit
 
 import httpx2  # the openai SDK's HTTP layer
@@ -34,7 +34,29 @@ UNRESOLVED: Final = "The host name {host} could not be found. Check the address.
 
 
 class BlockedEndpointError(ValueError):
-    """The address is one the server must not connect to; the message says why, without the key."""
+    """The address is one the server must not connect to; the message says why, without the key.
+
+    Attributes:
+        code: A short reason for the logs, such as "private_address" or "not_https".
+    """
+
+    def __init__(self, message: str, code: str) -> None:
+        """Keep the visitor's message and the reason code apart."""
+        super().__init__(message)
+        self.code = code
+
+
+def loggable(url: str) -> dict[str, Any]:
+    """Return the scheme and host of `url`, the only parts that may be logged.
+
+    The path, query and any credentials can carry secrets, so they are never kept.
+    """
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return {"scheme": None, "host": None}
+    return {"scheme": parts.scheme or None, "host": host}
 
 
 def check_url(url: str, *, allow_private: bool) -> None:
@@ -49,17 +71,17 @@ def check_url(url: str, *, allow_private: bool) -> None:
         parts = urlsplit(url)
         port = parts.port
     except ValueError:
-        raise BlockedEndpointError(NO_HOST) from None
+        raise BlockedEndpointError(NO_HOST, "no_host") from None
     if not allow_private and parts.scheme != "https":
-        raise BlockedEndpointError(NOT_HTTPS)
+        raise BlockedEndpointError(NOT_HTTPS, "not_https")
     if not parts.hostname:
-        raise BlockedEndpointError(NO_HOST)
+        raise BlockedEndpointError(NO_HOST, "no_host")
     if "@" in parts.netloc:
-        raise BlockedEndpointError(USERINFO)
+        raise BlockedEndpointError(USERINFO, "userinfo")
     if allow_private:
         return
     if port not in (None, HTTPS_PORT):
-        raise BlockedEndpointError(NOT_443)
+        raise BlockedEndpointError(NOT_443, "not_443")
     check_host(parts.hostname, HTTPS_PORT)
 
 
@@ -72,7 +94,7 @@ def check_host(host: str, port: int) -> str:
     try:
         found = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror:
-        raise BlockedEndpointError(UNRESOLVED.format(host=host)) from None
+        raise BlockedEndpointError(UNRESOLVED.format(host=host), "unresolved") from None
     for *_, sockaddr in found:
         ip = ipaddress.ip_address(str(sockaddr[0]).split("%")[0])  # drop an IPv6 zone id
         if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
@@ -86,7 +108,7 @@ def check_host(host: str, port: int) -> str:
             or ip.is_unspecified
             or not ip.is_global
         ):
-            raise BlockedEndpointError(INSIDE.format(ip=ip))
+            raise BlockedEndpointError(INSIDE.format(ip=ip), "private_address")
     return str(found[0][4][0]).split("%")[0]
 
 

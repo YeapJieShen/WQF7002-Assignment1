@@ -6,6 +6,7 @@ tool call, then one final `Done`. `send` and `resume` run the same turns and ret
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
@@ -14,6 +15,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.types import Command
 
 from planner.adapters.graph import build_graph
+from planner.adapters.logs import emit, session_hash
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
     from planner.adapters.graph import Model
     from planner.app.calls import CallRecord
     from planner.domain.models import BaseData, Pace, SessionState
+
+LOG = logging.getLogger("planner.session")
 
 
 @dataclass(frozen=True)
@@ -103,8 +107,11 @@ class Session:
         """
         self._base = base
         self._graph = build_graph(model, base, rules, max_rejections=max_rejections)
-        self._config: Any = {"configurable": {"thread_id": uuid4().hex}}
+        thread_id = uuid4().hex
+        self._config: Any = {"configurable": {"thread_id": thread_id}}
         self._start: SessionState | None = start
+        self.log_id = session_hash(thread_id)
+        emit(LOG, "session_start", session=self.log_id, tasks=len(start.tasks))
 
     @property
     def state(self) -> SessionState:
@@ -193,6 +200,8 @@ class Session:
     def _reply(self) -> Reply:
         snapshot = self._graph.get_state(self._config)
         if snapshot.interrupts:
+            asked = snapshot.values["messages"][-1].tool_calls[0]["name"]
+            emit(LOG, "confirm_asked", tool=asked)
             return Reply("", confirm=snapshot.interrupts[0].value)
         return Reply(snapshot.values["messages"][-1].text)
 
