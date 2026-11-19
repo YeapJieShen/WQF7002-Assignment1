@@ -158,6 +158,17 @@ def test_awkward_keys_are_scrubbed_in_every_spelling(key: str, fmt: str) -> None
     assert logs.REDACTED in text
 
 
+@pytest.mark.parametrize("fmt", ["json", "text"])
+def test_a_key_logged_lowercased_inside_a_host_is_scrubbed(fmt: str) -> None:
+    # URL parsing lowercases hostnames, so the logged host is not the registered spelling.
+    logs.register_secret("sk-AUDITKEY123")
+    out = io.StringIO()
+    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]
+    logs.emit(LOG, "endpoint_rejected", host="sk-auditkey123.evil.example.com")
+    assert "sk-auditkey123" not in out.getvalue().lower()
+    assert logs.REDACTED in out.getvalue()
+
+
 def test_short_or_placeholder_keys_are_not_registered() -> None:
     logs.register_secret("ollama")
     logs.register_secret("")

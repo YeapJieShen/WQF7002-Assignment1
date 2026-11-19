@@ -19,10 +19,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Final, Literal, TextIO
 from urllib.parse import quote, quote_plus
 
@@ -92,14 +94,25 @@ def _spellings(secret: str) -> set[str]:
     return {secret, json.dumps(secret)[1:-1], quote(secret, safe=""), quote_plus(secret)}
 
 
+@lru_cache(maxsize=1)
+def _scrubber(secrets: frozenset[str]) -> re.Pattern[str] | None:
+    """Compile one case-insensitive pattern matching every spelling of `secrets`.
+
+    Case-insensitive because URL parsing lowercases hostnames: a key placed in a host name is
+    logged in lower case. Longest first, so a secret that contains another is not half replaced.
+    """
+    spellings = {v for s in secrets for v in _spellings(s)}
+    if not spellings:
+        return None
+    alternatives = sorted(spellings, key=len, reverse=True)
+    return re.compile("|".join(map(re.escape, alternatives)), re.IGNORECASE)
+
+
 def scrub(text: str) -> str:
-    """Return `text` without any registered secret, in any of its spellings."""
+    """Return `text` without any registered secret, in any of its spellings, in any case."""
     with _SECRETS_LOCK:
-        secrets = list(_SECRETS)
-    # Longest first, so a secret that contains another is not left half replaced.
-    for spelling in sorted({v for s in secrets for v in _spellings(s)}, key=len, reverse=True):
-        text = text.replace(spelling, REDACTED)
-    return text
+        pattern = _scrubber(frozenset(_SECRETS))
+    return text if pattern is None else pattern.sub(REDACTED, text)
 
 
 def _clean(value: object) -> object:
