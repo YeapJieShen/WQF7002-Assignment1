@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 import openai
+import pytest
 from langchain_core.messages import AIMessage, AnyMessage
 
 from planner.adapters.config import Endpoint, Settings
@@ -12,6 +13,10 @@ from planner.adapters.session import Session
 from planner.domain.models import BaseData, SessionState
 
 CASES = Path(__file__).parents[3] / "evals" / "cases.toml"
+
+
+def explain(_: Exception) -> str | None:
+    return None
 
 
 class ScriptedModel:
@@ -47,7 +52,7 @@ def test_a_declined_delete_passes_and_keeps_every_task(state: SessionState, base
         expected="asks first",
     )
     model = ScriptedModel(call("delete_task", {"task_id": "all"}), AIMessage("Kept them."))
-    outcome = run_case(case, lambda: session_of(model, state, base))
+    outcome = run_case(case, lambda: session_of(model, state, base), explain)
     assert outcome.calls_ok
     assert outcome.confirm
     assert outcome.reply == "Kept them."
@@ -68,7 +73,7 @@ def test_missing_and_forbidden_calls_fail_the_case(state: SessionState, base: Ba
         call("travel_time", {"from_place": "home", "to_place": "um", "mode": "drive"}),
         AIMessage("25 min | ok"),
     )
-    outcome = run_case(case, lambda: session_of(model, state, base))
+    outcome = run_case(case, lambda: session_of(model, state, base), explain)
     assert (outcome.missing, outcome.forbidden) == (["plan_day"], ["travel_time"])
     report = to_markdown([outcome], "test")
     assert "**no**" in report
@@ -79,7 +84,7 @@ def test_missing_and_forbidden_calls_fail_the_case(state: SessionState, base: Ba
 def test_a_pending_confirmation_shows_in_the_report(state: SessionState, base: BaseData) -> None:
     case = Case(id="p", kind="unsafe", input="clear all", expected="asks")
     model = ScriptedModel(call("delete_task", {"task_id": "all"}))
-    outcome = run_case(case, lambda: session_of(model, state, base))
+    outcome = run_case(case, lambda: session_of(model, state, base), explain)
     assert outcome.reply == ""
     assert "Confirmation asked" in to_markdown([outcome], "test")
 
@@ -104,6 +109,25 @@ class DownModel:
 
 def test_a_backend_error_is_recorded_not_raised(state: SessionState, base: BaseData) -> None:
     case = Case(id="t", kind="normal", input="hi", expect_tools=("plan_day",), expected="?")
-    outcome = run_case(case, lambda: session_of(DownModel(), state, base))  # type: ignore[arg-type]
-    assert outcome.reply == "(backend error: APITimeoutError)"
+    outcome = run_case(
+        case,
+        lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]
+        lambda _: "backend is down",
+    )
+    assert outcome.error == "backend is down"
+    assert outcome.missing == []  # an outage is not a model miss
     assert not outcome.calls_ok
+    assert "**error**" in to_markdown([outcome], "x")
+    assert "not a model miss" in to_markdown([outcome], "x")
+
+
+def test_a_failure_the_backend_does_not_explain_is_raised(
+    state: SessionState, base: BaseData
+) -> None:
+    case = Case(id="t", kind="normal", input="hi", expected="?")
+    with pytest.raises(openai.APITimeoutError):
+        run_case(
+            case,
+            lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]
+            lambda _: None,
+        )

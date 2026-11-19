@@ -10,6 +10,7 @@ from planner.domain.models import BaseData, SessionState
 if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
 
+PERSONA: Final = "persona_wednesday"  # the sample persona the app and the evals start from
 _RESOURCES: Final[Traversable] = files("planner") / "resources"
 
 
