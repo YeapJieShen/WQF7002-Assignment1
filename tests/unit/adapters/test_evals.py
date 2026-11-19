@@ -147,7 +147,7 @@ def test_a_multi_case_run_builds_the_backend_once(
 
     def counting_build(settings: Settings) -> AppBackend:
         builds.append(settings)
-        return AppBackend(ReplyingModel(), zerogpu=False)
+        return AppBackend(ReplyingModel(), zerogpu=False, allow_private=False, error_max_chars=300)
 
     monkeypatch.setattr(evals, "build_backend", counting_build)
     cases = tmp_path / "cases.toml"
