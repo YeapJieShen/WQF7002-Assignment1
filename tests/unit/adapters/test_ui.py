@@ -14,6 +14,7 @@ from planner.adapters.chat import Tab
 from planner.adapters.config import Settings
 from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
+    COPY_JS,
     FILE_TOO_LARGE,
     HELP_HTML,
     MARK_PASTE_JS,
@@ -21,6 +22,7 @@ from planner.adapters.ui import (
     MESSAGE_TOO_LONG,
     PASTE_MARK,
     SESSION_LOST,
+    USAGE_SPAN,
     WATCH_PASTE_JS,
     Controller,
     build_app,
@@ -29,7 +31,7 @@ from planner.adapters.ui import (
     real_now,
     size_text,
 )
-from planner.adapters.views import SAMPLE_DAYS
+from planner.adapters.views import SAMPLE_DAYS, USAGE_HINT
 from planner.domain.models import Pace, Weekday
 from tests.unit.adapters.fakes import Boom, FailingModel, FakeBackend, ScriptedModel, call
 
@@ -503,3 +505,11 @@ def test_the_weekday_limits_are_always_visible_with_one_reset_button() -> None:
     assert numbers[-7:] == [d.value.title() for d in Weekday]
     assert not any(b.get_block_name() == "accordion" and "weekday" in _caption(b) for b in blocks)
     assert [getattr(b, "value", None) for b in blocks].count("Reset to defaults") == 1
+
+
+def test_the_copy_wrapper_strips_only_the_usage_span() -> None:
+    reply = f'Hello.\n\n<span class="turn-usage" title="{USAGE_HINT}">1 In / 2 Out Tokens</span>'
+    assert re.sub(USAGE_SPAN, "", reply) == "Hello."
+    other = 'Keep <span class="turn-usage-x">this</span> and <span>this</span>'
+    assert re.sub(USAGE_SPAN, "", other) == other
+    assert json.dumps(USAGE_SPAN) in COPY_JS
