@@ -58,7 +58,8 @@ def chat(ctl: Controller, tab: Tab | None, text: str, profile: Any = None) -> li
 
 def reply(chat: list[dict[str, Any]]) -> str:
     """The last message's text without its usage footer."""
-    return chat[-1]["content"].split('\n\n<span class="turn-usage">')[0]
+    content: str = chat[-1]["content"]
+    return content.split('\n\n<span class="turn-usage">')[0]
 
 
 def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
