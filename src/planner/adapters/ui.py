@@ -432,20 +432,21 @@ class Controller:
         self, tab: Tab | None, history: History, profile: gr.OAuthProfile | None = None
     ) -> Iterator[History]:
         """Run the call the user said yes to."""
-        return self._answer(tab, history, profile, approved=True)
+        yield from self._answer(tab, history, profile, approved=True)
 
     def decline(
         self, tab: Tab | None, history: History, profile: gr.OAuthProfile | None = None
     ) -> Iterator[History]:
         """Cancel the call the user said no to."""
-        return self._answer(tab, history, profile, approved=False)
+        yield from self._answer(tab, history, profile, approved=False)
 
     def _answer(
         self, tab: Tab | None, history: History, profile: gr.OAuthProfile | None, *, approved: bool
     ) -> Iterator[History]:
         live = _live(tab)
         live.pending = None
-        return stream_turn(
+        # A generator function, not a function returning one: Gradio streams only the former.
+        yield from stream_turn(
             live,
             self.backend,
             history,
