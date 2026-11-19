@@ -34,6 +34,7 @@ from planner.adapters.views import (
     pace_figure,
     place_label,
     place_rows,
+    places_figure,
     task_rows,
     travel_rows,
     usage_line,
@@ -586,6 +587,8 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     elem_classes="compact",
                 )
                 with gr.Accordion("Places (read only)", open=False):
+                    gr.Markdown("### Places graph *(read only)*")
+                    gr.Plot(value=places_figure(ctl.base, THEME.primary_500), show_label=False)
                     gr.Dataframe(
                         value=place_rows(ctl.base),
                         headers=PLACE_HEADERS,

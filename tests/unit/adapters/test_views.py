@@ -15,6 +15,7 @@ from planner.adapters.views import (
     pace_figure,
     place_label,
     place_rows,
+    places_figure,
     task_rows,
     thinking,
     travel_rows,
@@ -126,6 +127,16 @@ def test_the_pace_figure_is_a_smooth_filled_line_with_one_tick_per_day(
     assert line.fillcolor == "rgba(51, 102, 153, 0.3)"
     assert list(figure.layout.xaxis.tickvals) == list(line.x)
     assert len(line.x) == SAMPLE_DAYS + 1
+
+
+def test_the_places_graph_has_a_node_per_place_and_minutes_on_each_edge(base: BaseData) -> None:
+    edges, labels, nodes = places_figure(base, "#336699").data
+    assert list(nodes.text) == [p.name for p in base.places]
+    pairs = {frozenset((leg.origin, leg.destination)) for leg in base.travel}
+    assert len(labels.text) == len(pairs)
+    shown = dict(zip(labels.hovertext, labels.text, strict=True))
+    assert shown["drive 30 min, transit 55 min"] == "30 / 55"
+    assert edges.x.count(None) == len(pairs)
 
 
 def test_the_pace_chart_plans_the_sample_task_day_by_day(
