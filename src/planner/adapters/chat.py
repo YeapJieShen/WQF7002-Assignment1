@@ -7,10 +7,14 @@ chat messages, so tests drive it without a browser.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
+from uuid import uuid4
 
+from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit
 from planner.adapters.session import Done, Event, Session, Stage, Token
 from planner.adapters.transcript import Turn
 from planner.adapters.views import Message, stage_message
@@ -27,17 +31,52 @@ if TYPE_CHECKING:
 
 type History = list[Message]
 
+LOG = logging.getLogger("planner.chat")
+BACKEND_LOG = logging.getLogger("planner.backends")
+
 
 class SwitchableModel:
     """A model whose backend can change mid-conversation, because the graph is built only once."""
 
-    def __init__(self, model: Model) -> None:
-        """Start with `model` answering."""
+    def __init__(self, model: Model, custom: Endpoint | None = None) -> None:
+        """Start with `model` answering; `custom` says who it is, for the logs."""
         self.model = model
+        self.source = _source(custom)
 
     def invoke(self, messages: Sequence[AnyMessage], /) -> Any:  # noqa: ANN401 - the model's AIMessage
-        """Ask whichever model is current."""
-        return self.model.invoke(messages)
+        """Ask whichever model is current, logging how long it took and what it used."""
+        started = time.perf_counter()
+        try:
+            reply = self.model.invoke(messages)
+        except Exception as exc:
+            emit(
+                BACKEND_LOG,
+                "backend_error",
+                level=logging.WARNING,
+                **self.source,
+                duration_ms=elapsed_ms(started),
+                error_class=type(exc).__name__,
+                status_code=getattr(exc, "status_code", None),
+            )
+            raise
+        usage: dict[str, Any] = dict(reply.usage_metadata or {})
+        emit(
+            BACKEND_LOG,
+            "backend_call",
+            **self.source,
+            duration_ms=elapsed_ms(started),
+            tokens_in=usage.get("input_tokens"),
+            tokens_out=usage.get("output_tokens"),
+            tool_calls=len(reply.tool_calls) + len(reply.invalid_tool_calls),
+        )
+        return reply
+
+
+def _source(custom: Endpoint | None) -> dict[str, Any]:
+    """Who answers, for the logs: the host and model name of a custom endpoint, never its key."""
+    if custom is None:
+        return {"backend": "default"}
+    return {"backend": "custom", "host": urlsplit(custom.base_url).hostname, "model": custom.model}
 
 
 @dataclass
@@ -76,7 +115,7 @@ def new_tab(  # noqa: PLR0913 - one argument per thing a tab starts from
     Raises:
         ValueError: If the backend does not accept `custom`.
     """
-    switch = SwitchableModel(backend.model(custom))
+    switch = SwitchableModel(backend.model(custom), custom)
     return Tab(
         Session(switch, base, rules, state, max_rejections=max_rejections),
         switch,
@@ -92,6 +131,7 @@ def use_endpoint(tab: Tab, backend: Backend, custom: Endpoint | None) -> None:
         ValueError: If the backend does not accept `custom`; the tab is left as it was.
     """
     tab.switch.model = backend.model(custom)
+    tab.switch.source = _source(custom)
     tab.custom = custom
 
 
@@ -124,8 +164,14 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
     started = time.perf_counter()
     chat = list(history)
     open_bubble = False
+    turn_id, session = uuid4().hex, tab.session.log_id
+    outcome = "error"
+    activate(turn_id, session)
+    emit(LOG, "turn_start", turns_before=len(tab.turns), signed_in=signed_in, **tab.switch.source)
+    if LOG.isEnabledFor(logging.DEBUG):  # what the user said is user data: DEBUG only
+        emit(LOG, "turn_input", level=logging.DEBUG, text=said)
     try:
-        for event in events():
+        for event in bind(turn_id, session, events()):
             match event:
                 case Token(text):
                     if open_bubble:
@@ -141,6 +187,7 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
                     turn.reply, turn.confirm, turn.usage = reply.text, reply.confirm, usage
                     tab.pending = reply.confirm
                     chat = _settle(chat, reply.text, open_bubble=open_bubble)
+                    outcome = "confirm_pending" if reply.confirm else "reply"
                     turn.cost = backend.cost(usage, tab.custom) if usage else None
                     if turn.cost and reply.text:
                         chat[-1] = {
@@ -149,15 +196,37 @@ def stream_turn(  # noqa: PLR0913 - the turn's collaborators
                         }
             yield list(chat)
     except Exception as exc:
+        activate(turn_id, session)
         note = backend.explain(exc, signed_in=signed_in, custom=tab.custom is not None)
         if note is None:
+            emit(
+                LOG, "turn_error", level=logging.ERROR, exc_info=exc, error_class=type(exc).__name__
+            )
             raise
+        outcome = "backend_error"
         turn.error = note
         chat.append({"role": "assistant", "content": note})
         yield list(chat)
     finally:
         turn.seconds = time.perf_counter() - started
         tab.turns.append(turn)
+        activate(turn_id, session)
+        _log_turn_end(turn, outcome)
+        deactivate()
+
+
+def _log_turn_end(turn: Turn, outcome: str) -> None:
+    emit(
+        LOG,
+        "turn_end",
+        outcome=outcome,
+        latency_ms=round(turn.seconds * 1000, 2),
+        tokens_in=turn.usage.input_tokens if turn.usage else None,
+        tokens_out=turn.usage.output_tokens if turn.usage else None,
+        n_tool_calls=sum(1 for r in turn.stages if r.stage == "check"),
+    )
+    if turn.reply and LOG.isEnabledFor(logging.DEBUG):  # the reply echoes user data: DEBUG only
+        emit(LOG, "turn_reply", level=logging.DEBUG, text=turn.reply)
 
 
 def _settle(chat: History, text: str, *, open_bubble: bool) -> History:

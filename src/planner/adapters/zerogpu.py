@@ -16,6 +16,8 @@ its lenient partial-JSON parser, which accepts truncated JSON and drops the pars
 from __future__ import annotations
 
 import json
+import logging
+import time
 from itertools import chain
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 from uuid import uuid4
@@ -35,6 +37,9 @@ from langchain_core.utils.utils import LC_ID_PREFIX
 from pydantic import ConfigDict
 
 from planner.adapters.llm import tool_specs
+from planner.adapters.logs import elapsed_ms, emit
+
+LOG = logging.getLogger("planner.backends")
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -161,7 +166,12 @@ class TemplateChat(BaseChatModel):
         prompt = self.engine.render(to_chat(messages), tool_specs())
         message_id = f"{LC_ID_PREFIX}-{run_manager.run_id}" if run_manager else None
         text, shown = "", 0
+        started = time.perf_counter()
+        first_piece_ms: float | None = None
         for piece in chain(self.engine.generate(prompt), [None]):  # None: the reply is complete
+            if piece and first_piece_ms is None:
+                # On ZeroGPU this is the wait for a GPU (queue plus attach) plus the first token.
+                first_piece_ms = elapsed_ms(started)
             text += piece or ""
             end = visible_end(text, final=piece is None, call_open=self.call_open)
             if run_manager and end > shown:
@@ -174,6 +184,14 @@ class TemplateChat(BaseChatModel):
         reply = parse_reply(text, call_open=self.call_open, call_close=self.call_close)
         reply.id = message_id
         used_in, used_out = self.engine.count(prompt), self.engine.count(text)
+        emit(
+            LOG,
+            "generate",
+            first_piece_ms=first_piece_ms,
+            duration_ms=elapsed_ms(started),
+            tokens_in=used_in,
+            tokens_out=used_out,
+        )
         reply.usage_metadata = {
             "input_tokens": used_in,
             "output_tokens": used_out,

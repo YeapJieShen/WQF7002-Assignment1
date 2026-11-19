@@ -7,6 +7,7 @@ key cut out, so neither the chat, the logs nor a traceback can show it.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
@@ -14,13 +15,16 @@ import gradio as gr
 import openai
 
 from planner.adapters import zerogpu
+from planner.adapters.config import DUMMY_API_KEY
 from planner.adapters.endpoint_guard import (
     BlockedEndpointError,
     check_url,
     guarded_async_client,
     guarded_client,
+    loggable,
 )
 from planner.adapters.llm import BACKEND_ERRORS, build_model, client
+from planner.adapters.logs import emit, register_secret
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -36,10 +40,17 @@ ZEROGPU_DOCS: Final = "https://huggingface.co/docs/hub/spaces-zerogpu"
 BILLING: Final = "https://huggingface.co/settings/billing"
 BACKEND_DOWN: Final = "No language-model backend answered. Check that it is running."
 REDACTED: Final = "[key removed]"
+LOG = logging.getLogger("planner.backends")
 
 
 class ProviderError(Exception):
-    """A custom endpoint failed; the message is the provider's, without the key."""
+    """A custom endpoint failed; the message is the provider's, without the key.
+
+    Attributes:
+        status_code: The provider's HTTP status, when it sent one; for the logs.
+    """
+
+    status_code: int | None = None
 
 
 class EndpointTimeoutError(ProviderError):
@@ -70,7 +81,19 @@ class AppBackend:
         """
         if custom is None:
             return self.default
-        check_url(custom.base_url, allow_private=self.allow_private)
+        try:
+            check_url(custom.base_url, allow_private=self.allow_private)
+        except BlockedEndpointError as exc:
+            emit(
+                LOG,
+                "endpoint_rejected",
+                level=logging.WARNING,
+                reason=exc.code,
+                **loggable(custom.base_url),
+            )
+            raise
+        if (key := custom.api_key.get_secret_value()) != DUMMY_API_KEY:
+            register_secret(key)  # so no log line can ever carry it
         guarded = not self.allow_private
         return _Redacting(
             client(
@@ -122,12 +145,20 @@ class _Redacting:
         try:
             return self.chat.invoke(messages)
         except openai.APITimeoutError:
+            emit(
+                LOG,
+                "limit_hit",
+                level=logging.WARNING,
+                limit="custom_timeout_s",
+                allowed=self.timeout_s,
+            )
             msg = (
                 f"Your endpoint didn't answer within {self.timeout_s:g} s. "
                 "Check that it is up, or try a faster model."
             )
             raise EndpointTimeoutError(msg) from None
         except BlockedEndpointError as exc:  # refused by the guard before the request
+            emit(LOG, "endpoint_rejected", level=logging.WARNING, reason=exc.code, at="request")
             raise ProviderError(str(exc)) from None
         except openai.OpenAIError as exc:
             raise self._provider_error(exc) from None  # the original may quote the key
@@ -136,8 +167,18 @@ class _Redacting:
         """Return the provider's message without the key, cut to the configured length."""
         text = str(exc).replace(self.key, REDACTED) if self.key else str(exc)
         if len(text) > self.error_max_chars:
+            emit(
+                LOG,
+                "limit_hit",
+                level=logging.WARNING,
+                limit="provider_error_max_chars",
+                actual=len(text),
+                allowed=self.error_max_chars,
+            )
             text = text[: self.error_max_chars] + "..."
-        return ProviderError(text)
+        error = ProviderError(text)
+        error.status_code = getattr(exc, "status_code", None)
+        return error
 
 
 def build_backend(settings: Settings) -> AppBackend:
