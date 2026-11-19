@@ -38,7 +38,7 @@ def call(name: str, args: dict[str, object], call_id: str = "c1") -> AIMessage:
 
 
 def start(model: ScriptedModel, base: BaseData, state: SessionState, **kwargs: int) -> Any:
-    graph = build_graph(model, base, RULES, **kwargs)
+    graph = build_graph(model, base, RULES, **{"max_rejections": 3, **kwargs})
     first = graph.invoke(
         {
             "messages": [HumanMessage("hi")],

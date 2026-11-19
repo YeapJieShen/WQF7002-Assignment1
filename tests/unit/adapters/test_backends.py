@@ -18,6 +18,7 @@ from planner.adapters.backends import (
     NOT_HTTPS,
     ZEROGPU_DOCS,
     AppBackend,
+    EndpointTimeoutError,
     ProviderError,
     _Redacting,
     build_backend,
@@ -86,7 +87,7 @@ def test_a_custom_endpoint_must_use_https(url: str) -> None:
 
 
 def test_provider_errors_lose_the_key() -> None:
-    model = _Redacting(_fails(_rejects_key()), KEY)
+    model = _Redacting(_fails(_rejects_key()), KEY, 30)
     with pytest.raises(ProviderError) as caught:
         model.invoke([HumanMessage("hi")])
     assert KEY not in str(caught.value)
@@ -101,17 +102,17 @@ def test_provider_errors_lose_the_key() -> None:
 def test_an_empty_key_is_not_redacted_everywhere() -> None:
     error = openai.APIConnectionError(request=REQUEST)
     with pytest.raises(ProviderError, match=r"^Connection error\.$"):
-        _Redacting(_fails(error), "").invoke([])
+        _Redacting(_fails(error), "", 30).invoke([])
 
 
 def test_other_errors_pass_through_a_custom_client() -> None:
     with pytest.raises(ValueError, match="bug"):
-        _Redacting(_fails(ValueError("bug")), KEY).invoke([])
+        _Redacting(_fails(ValueError("bug")), KEY, 30).invoke([])
 
 
 def test_a_custom_client_still_streams_tokens(state: SessionState, base: BaseData) -> None:
     chat = GenericFakeChatModel(messages=iter([AIMessage("Hello there")]))
-    session = Session(_Redacting(chat, KEY), base, "rules", state)
+    session = Session(_Redacting(chat, KEY, 30), base, "rules", state, max_rejections=3)
     tokens = [e.text for e in session.stream("hi") if isinstance(e, Token)]
     assert len(tokens) > 1
     assert "".join(tokens) == "Hello there"
@@ -193,7 +194,34 @@ class _Engine:
 
 
 def test_zerogpu_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(zerogpu, "load_engine", _Engine)
-    backend = build_backend(Settings(_env_file=None, backend="zerogpu"))
+    seen: list[Settings] = []
+
+    def load(settings: Settings) -> _Engine:
+        seen.append(settings)
+        return _Engine()
+
+    monkeypatch.setattr(zerogpu, "load_engine", load)
+    settings = Settings(
+        _env_file=None, backend="zerogpu", tool_call_open="[[", tool_call_close="]]"
+    )
+    backend = build_backend(settings)
     assert backend.zerogpu
+    assert seen == [settings]
     assert isinstance(backend.default, zerogpu.TemplateChat)
+    assert (backend.default.call_open, backend.default.call_close) == ("[[", "]]")
+
+
+def test_a_custom_endpoint_that_times_out_says_how_long_it_was_given() -> None:
+    error = openai.APITimeoutError(request=REQUEST)
+    with pytest.raises(EndpointTimeoutError) as caught:
+        _Redacting(_fails(error), KEY, 30).invoke([])
+    explained = local().explain(caught.value, signed_in=False, custom=True)
+    assert explained == (
+        "Your endpoint didn't answer within 30 s. Check that it is up, or try a faster model."
+    )
+
+
+def test_the_custom_client_is_built_with_its_endpoint_timeout() -> None:
+    model = local().model(CUSTOM.model_copy(update={"timeout_s": 7}))
+    assert isinstance(model, _Redacting)
+    assert model.timeout_s == 7

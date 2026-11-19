@@ -68,6 +68,7 @@ def new_tab(  # noqa: PLR0913 - one argument per thing a tab starts from
     state: SessionState,
     *,
     real_clock: bool,
+    max_rejections: int,
     custom: Endpoint | None = None,
 ) -> Tab:
     """Start a tab's conversation from `state`, answered by the default model or `custom`.
@@ -76,7 +77,12 @@ def new_tab(  # noqa: PLR0913 - one argument per thing a tab starts from
         ValueError: If the backend does not accept `custom`.
     """
     switch = SwitchableModel(backend.model(custom))
-    return Tab(Session(switch, base, rules, state), switch, custom, real_clock)
+    return Tab(
+        Session(switch, base, rules, state, max_rejections=max_rejections),
+        switch,
+        custom,
+        real_clock,
+    )
 
 
 def use_endpoint(tab: Tab, backend: Backend, custom: Endpoint | None) -> None:

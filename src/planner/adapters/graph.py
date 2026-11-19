@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
     from planner.domain.models import BaseData
 
-DEFAULT_MAX_REJECTIONS = 3
 # Only our own state types may be rebuilt from a checkpoint; LangGraph will block the rest.
 _SERDE = JsonPlusSerializer(
     allowed_msgpack_modules=[
@@ -83,7 +82,7 @@ class AgentState(TypedDict):
 
 
 def build_graph(
-    model: Model, base: BaseData, rules: str, *, max_rejections: int = DEFAULT_MAX_REJECTIONS
+    model: Model, base: BaseData, rules: str, *, max_rejections: int
 ) -> CompiledStateGraph[AgentState, None, AgentState, AgentState]:
     """Assemble and compile the agent graph.
 

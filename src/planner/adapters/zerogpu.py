@@ -1,7 +1,8 @@
 """Qwen3 running in-process with transformers, on a Hugging Face ZeroGPU Space.
 
 The tools go in through the model's chat template; the model answers with plain text or with
-`<tool_call>{"name": ..., "arguments": {...}}</tool_call>`, which `parse_reply` turns into a
+`<tool_call>{"name": ..., "arguments": {...}}</tool_call>` (the Hermes format; the markers are
+settings, the JSON payload shape is fixed), which `parse_reply` turns into a
 LangChain tool call, or an invalid one when it is malformed so the graph rejects it visibly.
 
 Generation stops at the first `</tool_call>`, so a reply carries at most one call (the graph
@@ -40,10 +41,7 @@ if TYPE_CHECKING:
 
     from langchain_core.callbacks import CallbackManagerForLLMRun
 
-MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
-MAX_NEW_TOKENS = 1024
-CALL_OPEN = "<tool_call>"
-CALL_CLOSE = "</tool_call>"
+    from planner.adapters.config import Settings
 
 type Chat = list[dict[str, Any]]
 
@@ -61,7 +59,7 @@ class Engine(Protocol):
         ...
 
     def generate(self, prompt: str, /) -> Iterator[str]:
-        """Yield the reply to `prompt` in pieces, stopping after the first `</tool_call>`."""
+        """Yield the reply to `prompt` in pieces, stopping after the first call close marker."""
         ...
 
 
@@ -95,28 +93,28 @@ def _turn(message: BaseMessage) -> dict[str, Any]:
     raise TypeError(msg)
 
 
-def visible_end(text: str, *, final: bool) -> int:
+def visible_end(text: str, *, final: bool, call_open: str) -> int:
     """Return how much of `text` is reply text that is safe to show.
 
-    Everything from `<tool_call>` on is hidden. Until the reply is `final`, a tail that could be
-    the start of `<tool_call>` is held back too.
+    Everything from the `call_open` marker on is hidden. Until the reply is `final`, a tail that
+    could be the start of the marker is held back too.
     """
-    cut = text.find(CALL_OPEN)
+    cut = text.find(call_open)
     if cut >= 0:
         return cut
     if not final:
-        for size in range(min(len(CALL_OPEN) - 1, len(text)), 0, -1):
-            if text.endswith(CALL_OPEN[:size]):
+        for size in range(min(len(call_open) - 1, len(text)), 0, -1):
+            if text.endswith(call_open[:size]):
                 return len(text) - size
     return len(text)
 
 
-def parse_reply(text: str) -> AIMessage:
+def parse_reply(text: str, *, call_open: str, call_close: str) -> AIMessage:
     """Turn the raw reply into a message: text, plus the first tool call if there is one."""
-    head, found, rest = text.partition(CALL_OPEN)
+    head, found, rest = text.partition(call_open)
     if not found:
         return AIMessage(content=text.strip())
-    body = rest.partition(CALL_CLOSE)[0].strip()
+    body = rest.partition(call_close)[0].strip()
     call_id = f"call_{uuid4().hex}"
     try:
         call = json.loads(body)
@@ -139,11 +137,15 @@ class TemplateChat(BaseChatModel):
 
     Attributes:
         engine: Renders prompts, counts tokens and generates.
+        call_open: Text that opens a tool call in the reply.
+        call_close: Text that closes it; the engine stops generating there.
     """
 
     model_config: ClassVar[ConfigDict] = ConfigDict(arbitrary_types_allowed=True)
 
     engine: Engine
+    call_open: str
+    call_close: str
 
     @property
     def _llm_type(self) -> str:
@@ -152,7 +154,7 @@ class TemplateChat(BaseChatModel):
     def _generate(
         self,
         messages: list[BaseMessage],
-        stop: list[str] | None = None,  # noqa: ARG002 - generation stops at </tool_call> only
+        stop: list[str] | None = None,  # noqa: ARG002 - generation stops at the close marker only
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,  # noqa: ANN401, ARG002 - BaseChatModel's signature; no per-call options
     ) -> ChatResult:
@@ -161,7 +163,7 @@ class TemplateChat(BaseChatModel):
         text, shown = "", 0
         for piece in chain(self.engine.generate(prompt), [None]):  # None: the reply is complete
             text += piece or ""
-            end = visible_end(text, final=piece is None)
+            end = visible_end(text, final=piece is None, call_open=self.call_open)
             if run_manager and end > shown:
                 # The final message has the same id, so stream consumers do not see it twice.
                 chunk = AIMessageChunk(content=text[shown:end], id=message_id)
@@ -169,7 +171,7 @@ class TemplateChat(BaseChatModel):
                     text[shown:end], chunk=ChatGenerationChunk(message=chunk)
                 )
             shown = max(shown, end)
-        reply = parse_reply(text)
+        reply = parse_reply(text, call_open=self.call_open, call_close=self.call_close)
         reply.id = message_id
         used_in, used_out = self.engine.count(prompt), self.engine.count(text)
         reply.usage_metadata = {
@@ -196,8 +198,8 @@ class _Transformers:  # pragma: no cover - needs the model weights and a GPU
         return len(self._tokenizer(text, add_special_tokens=False).input_ids)
 
 
-def load_engine(model_id: str = MODEL_ID) -> Engine:  # pragma: no cover - needs a GPU
-    """Load the model onto the GPU and register its ZeroGPU generate function.
+def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
+    """Load the model `settings` names onto the GPU and register its ZeroGPU generate function.
 
     Call this once while the Space starts: ZeroGPU wants models placed on cuda at startup and
     `@spaces.GPU` functions defined before the app launches. Needs the "space" dependencies.
@@ -211,19 +213,22 @@ def load_engine(model_id: str = MODEL_ID) -> Engine:  # pragma: no cover - needs
         TextIteratorStreamer,
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model_id, revision = settings.zerogpu_model_id, settings.zerogpu_model_revision
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
     # Sampling comes from the model's generation_config, the settings Qwen recommends.
-    model = AutoModelForCausalLM.from_pretrained(model_id, dtype="auto").to("cuda")
+    model = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype="auto").to(
+        "cuda"
+    )
 
-    @spaces.GPU  # type: ignore[untyped-decorator]  # spaces is untyped
+    @spaces.GPU(duration=settings.zerogpu_gpu_duration_s)  # type: ignore[untyped-decorator]  # spaces is untyped
     def generate(prompt: str) -> Iterator[str]:
         inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
         streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
         options = {
             **inputs,
             "streamer": streamer,
-            "max_new_tokens": MAX_NEW_TOKENS,
-            "stop_strings": [CALL_CLOSE],
+            "max_new_tokens": settings.zerogpu_max_new_tokens,
+            "stop_strings": [settings.tool_call_close],
             "tokenizer": tokenizer,
         }
         Thread(target=model.generate, kwargs=options, daemon=True).start()

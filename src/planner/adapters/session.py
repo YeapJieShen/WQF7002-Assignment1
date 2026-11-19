@@ -13,7 +13,7 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.types import Command
 
-from planner.adapters.graph import DEFAULT_MAX_REJECTIONS, build_graph
+from planner.adapters.graph import build_graph
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -90,7 +90,7 @@ class Session:
         rules: str,
         start: SessionState,
         *,
-        max_rejections: int = DEFAULT_MAX_REJECTIONS,
+        max_rejections: int,
     ) -> None:
         """Create a conversation.
 

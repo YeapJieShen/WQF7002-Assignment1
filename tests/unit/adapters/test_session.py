@@ -25,7 +25,7 @@ def call(name: str, args: dict[str, object]) -> AIMessage:
 
 
 def test_send_returns_the_assistant_text(state: SessionState, base: BaseData) -> None:
-    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state)
+    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state, max_rejections=3)
     assert session.send("hi") == Reply("Hello")
 
 
@@ -33,7 +33,7 @@ def test_state_is_the_start_state_until_a_tool_changes_it(
     state: SessionState, base: BaseData
 ) -> None:
     model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     assert session.state == state
     session.send("add a parcel task")
     assert session.state.task("T6") is not None
@@ -41,7 +41,7 @@ def test_state_is_the_start_state_until_a_tool_changes_it(
 
 def test_later_turns_keep_the_history(state: SessionState, base: BaseData) -> None:
     model = ScriptedModel(AIMessage("One"), AIMessage("Two"))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     session.send("first")
     assert session.send("second") == Reply("Two")
     # rules + snapshot around 1 message, then around 3 (user, assistant, user)
@@ -50,7 +50,7 @@ def test_later_turns_keep_the_history(state: SessionState, base: BaseData) -> No
 
 def test_delete_asks_then_resume_decides(state: SessionState, base: BaseData) -> None:
     model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     asked = session.send("delete T4")
     assert asked.text == ""
     assert asked.confirm is not None
@@ -61,14 +61,14 @@ def test_delete_asks_then_resume_decides(state: SessionState, base: BaseData) ->
 
 def test_declining_keeps_the_task(state: SessionState, base: BaseData) -> None:
     model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Kept."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     session.send("delete T4")
     session.resume(approved=False)
     assert session.state == state
 
 
 def test_call_log_is_empty_until_a_tool_is_called(state: SessionState, base: BaseData) -> None:
-    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state)
+    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state, max_rejections=3)
     assert session.call_log == []
     session.send("hi")
     assert session.call_log == []
@@ -81,7 +81,7 @@ def test_call_log_accumulates_across_turns(state: SessionState, base: BaseData) 
         call("add_task", {"title": "B"}),
         AIMessage("Two."),
     )
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     session.send("first")
     session.send("second")
     assert [r.stage for r in session.call_log] == ["check", "act", "check", "act"]
@@ -100,7 +100,7 @@ def changes(state: SessionState) -> dict[str, Any]:
 def test_update_session_changes_only_that_field(
     state: SessionState, base: BaseData, field: str, *, started: bool
 ) -> None:
-    session = Session(ScriptedModel(AIMessage("Hi")), base, "rules", state)
+    session = Session(ScriptedModel(AIMessage("Hi")), base, "rules", state, max_rejections=3)
     if started:
         session.send("hi")
     value = changes(state)[field]
@@ -113,7 +113,7 @@ def test_update_session_shows_in_the_next_prompt_and_keeps_history(
     state: SessionState, base: BaseData
 ) -> None:
     model = ScriptedModel(call("add_task", {"title": "A"}), AIMessage("One."), AIMessage("Two."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     session.send("first")
     log = session.call_log
     session.update_session(pace=Pace(daily_limit_min=120))
@@ -124,7 +124,7 @@ def test_update_session_shows_in_the_next_prompt_and_keeps_history(
 
 
 def test_update_session_rejects_an_unknown_place(state: SessionState, base: BaseData) -> None:
-    session = Session(ScriptedModel(), base, "rules", state)
+    session = Session(ScriptedModel(), base, "rules", state, max_rejections=3)
     with pytest.raises(ValueError, match="unknown place"):
         session.update_session(location="narnia")
 
@@ -133,7 +133,7 @@ def test_update_session_waits_for_a_pending_confirmation(
     state: SessionState, base: BaseData
 ) -> None:
     model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Kept."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     session.send("delete T4")
     with pytest.raises(RuntimeError, match="pending confirmation"):
         session.update_session(pace=Pace(daily_limit_min=120))
@@ -143,20 +143,20 @@ def test_update_session_waits_for_a_pending_confirmation(
 
 def test_stream_yields_tokens_then_done(state: SessionState, base: BaseData) -> None:
     model = GenericFakeChatModel(messages=iter([AIMessage("Hello there")]))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     events = list(session.stream("hi"))
     assert "".join(e.text for e in events if isinstance(e, Token)) == "Hello there"
     assert events[-1] == Done(Reply("Hello there"))
 
 
 def test_a_plain_model_streams_its_reply_as_one_token(state: SessionState, base: BaseData) -> None:
-    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state)
+    session = Session(ScriptedModel(AIMessage("Hello")), base, "rules", state, max_rejections=3)
     assert list(session.stream("hi")) == [Token("Hello"), Done(Reply("Hello"))]
 
 
 def test_stream_yields_each_stage_as_it_happens(state: SessionState, base: BaseData) -> None:
     model = ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted."))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     first = list(session.stream("delete T4"))
     assert [e.record.stage for e in first if isinstance(e, Stage)] == ["check"]
     assert isinstance(first[-1], Done)
@@ -174,6 +174,6 @@ def test_done_sums_token_usage_over_the_turn(state: SessionState, base: BaseData
         return message.model_copy(update={"usage_metadata": usage})
 
     model = ScriptedModel(used(call("add_task", {"title": "A"}), 10), used(AIMessage("Ok."), 20))
-    session = Session(model, base, "rules", state)
+    session = Session(model, base, "rules", state, max_rejections=3)
     *_, done = session.stream("add A")
     assert done == Done(Reply("Ok."), Usage(input_tokens=30, output_tokens=2))

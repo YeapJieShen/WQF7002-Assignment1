@@ -11,12 +11,15 @@ from planner.adapters.config import Settings
 from planner.adapters.ui import CSS, THEME, build_app
 
 # Built at import, once: the ZeroGPU backend loads its model and registers `@spaces.GPU` here.
-demo = build_app(build_backend(Settings()))  # pragma: no cover - building the layout starts nothing
+settings = Settings()
+demo = build_app(
+    build_backend(settings), settings
+)  # pragma: no cover - building the layout starts nothing
 
 
 def main() -> None:  # pragma: no cover - starts a server
     """Launch the web app."""
-    demo.launch(theme=THEME, css=CSS, pwa=True)
+    demo.launch(theme=THEME, css=CSS, pwa=True, max_file_size=settings.import_max_bytes)
 
 
 if __name__ == "__main__":  # pragma: no cover
