@@ -6,6 +6,11 @@ All notable changes to this project are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- UI refresh: one row per tool call with a status badge, a pending line with a spinner that
+  rotates its words (`PLANNER_THINKING_ROTATE_S`), each turn's seconds and tokens under the chat,
+  a smooth Plotly Pace chart in date order, always-visible weekday limits with one reset button, a
+  compact toolbar, a settings sidebar with a model dropdown, and a read-only Places graph. `plotly`
+  is a new dependency.
 - Hugging Face Space on ZeroGPU: Qwen3-4B-Instruct-2507 runs in-process with transformers
   (`PLANNER_BACKEND=zerogpu`), with a visitor's own https OpenAI-compatible endpoint per session
   (#25, #26, #27).
