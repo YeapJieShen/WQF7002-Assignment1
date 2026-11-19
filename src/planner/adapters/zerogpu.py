@@ -114,6 +114,17 @@ def visible_end(text: str, *, final: bool, call_open: str) -> int:
     return len(text)
 
 
+def tokens_per_s(tokens_out: int, first_piece_ms: float | None, duration_ms: float) -> float | None:
+    """Return the decode speed: tokens after the first, per second after the first piece arrived.
+
+    None when there is nothing to measure (no piece, a single token, or no time between them).
+    """
+    if first_piece_ms is None or tokens_out < 2:  # noqa: PLR2004 - the first token is the wait
+        return None
+    decode_s = (duration_ms - first_piece_ms) / 1000
+    return round((tokens_out - 1) / decode_s, 1) if decode_s > 0 else None
+
+
 def parse_reply(text: str, *, call_open: str, call_close: str) -> AIMessage:
     """Turn the raw reply into a message: text, plus the first tool call if there is one."""
     head, found, rest = text.partition(call_open)
@@ -184,13 +195,15 @@ class TemplateChat(BaseChatModel):
         reply = parse_reply(text, call_open=self.call_open, call_close=self.call_close)
         reply.id = message_id
         used_in, used_out = self.engine.count(prompt), self.engine.count(text)
+        duration_ms = elapsed_ms(started)
         emit(
             LOG,
             "generate",
             first_piece_ms=first_piece_ms,
-            duration_ms=elapsed_ms(started),
+            duration_ms=duration_ms,
             tokens_in=used_in,
             tokens_out=used_out,
+            tokens_per_s=tokens_per_s(used_out, first_piece_ms, duration_ms),
         )
         reply.usage_metadata = {
             "input_tokens": used_in,
