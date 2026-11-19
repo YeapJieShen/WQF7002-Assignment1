@@ -5,12 +5,21 @@ Every entity is immutable: a change produces a new object instead of editing the
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 from functools import cached_property
-from typing import Annotated, Final, Self
+from typing import Annotated, Any, Final, NoReturn, Self
 
-from pydantic import BaseModel, ConfigDict, Field, NaiveDatetime, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    NaiveDatetime,
+    PlainSerializer,
+    model_validator,
+)
 
 ANYWHERE: Final = "anywhere"
 """Place value for a task that can be done at any location."""
@@ -76,7 +85,7 @@ class Task(Frozen):
     id: str
     title: str
     type: TaskType
-    duration_min: int | None = None
+    duration_min: Annotated[int, Field(gt=0)] | None = None
     deadline: NaiveDatetime | None = None
     place: str = ANYWHERE
     earliest_start: NaiveDatetime | None = None
@@ -154,8 +163,8 @@ class TravelLeg(Frozen):
     origin: str
     destination: str
     mode: Mode
-    minutes: int
-    buffer_min: int
+    minutes: Annotated[int, Field(ge=0)]
+    buffer_min: Annotated[int, Field(ge=0)]
 
 
 class Config(Frozen):
@@ -170,10 +179,10 @@ class Config(Frozen):
         day_end: When the planning day ends.
     """
 
-    slot_min: int
-    horizon_days: int
-    min_break_min: int
-    max_chunk_min: int
+    slot_min: Annotated[int, Field(gt=0)]
+    horizon_days: Annotated[int, Field(gt=0)]
+    min_break_min: Annotated[int, Field(ge=0)]
+    max_chunk_min: Annotated[int, Field(gt=0)]
     day_start: time
     day_end: time
 
@@ -194,6 +203,17 @@ class BaseData(Frozen):
     places: tuple[Place, ...]
     travel: tuple[TravelLeg, ...]
     config: Config
+
+    @model_validator(mode="after")
+    def _ids_and_routes_are_unique(self) -> Self:
+        if len(self.place_ids) != len(self.places):
+            msg = "two places share an id"
+            raise ValueError(msg)
+        routes = [(frozenset((leg.origin, leg.destination)), leg.mode) for leg in self.travel]
+        if len(set(routes)) != len(routes):
+            msg = "the travel table lists the same route twice"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _travel_uses_known_places(self) -> Self:
@@ -238,6 +258,30 @@ class BaseData(Frozen):
 Minutes = Annotated[int, Field(ge=0, le=24 * 60)]
 
 
+def _blocked(*_args: object, **_kwargs: object) -> NoReturn:
+    msg = "FrozenDict is read-only"
+    raise TypeError(msg)
+
+
+class FrozenDict[K, V](dict[K, V]):
+    """A read-only, hashable dict, so a frozen model holding one is really immutable."""
+
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = __ior__ = _blocked
+
+    def __hash__(self) -> int:  # type: ignore[override]
+        """Hash by content, like a frozenset of the items."""
+        return hash(frozenset(self.items()))
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Rebuild through the constructor, which bypasses the blocked mutators."""
+        return (type(self), (dict(self),))
+
+
+WeekdayLimits = Annotated[
+    Mapping[Weekday, Minutes], AfterValidator(FrozenDict), PlainSerializer(dict)
+]
+
+
 class Pace(Frozen):
     """How the user wants their work paced. Changed only through the UI, never by the model.
 
@@ -253,7 +297,7 @@ class Pace(Frozen):
     daily_limit_min: Minutes = 480
     max_consecutive_min: Minutes | None = 240
     long_break_min: Minutes = 45
-    weekday_limit_min: dict[Weekday, Minutes] = {}
+    weekday_limit_min: WeekdayLimits = Field(default_factory=dict, validate_default=True)
     distribution: Annotated[float, Field(ge=0, le=1)] = 0.5
     hardest_first: bool = False
 
@@ -270,26 +314,41 @@ class SessionState(Frozen):
         location: Place id where the user is.
         pace: The user's pace settings.
         tasks: All tasks.
+        last_task_number: Highest `T<n>` number ever handed out, so a deleted id is never reused.
+            It only matters when it exceeds every number still in use; 0 means "none recorded".
     """
 
     now: NaiveDatetime
     location: str
     pace: Pace = Pace()
     tasks: tuple[Task, ...] = ()
+    last_task_number: Annotated[int, Field(ge=0)] = 0
+
+    @model_validator(mode="after")
+    def _task_ids_are_unique(self) -> Self:
+        if len(self.task_ids) != len(self.tasks):
+            msg = "two tasks share an id"
+            raise ValueError(msg)
+        return self
 
     @cached_property
     def task_ids(self) -> frozenset[str]:
         """Ids of all tasks."""
         return frozenset(t.id for t in self.tasks)
 
-    def with_tasks(self, tasks: tuple[Task, ...]) -> SessionState:
-        """Return a copy with a different task list.
+    def with_tasks(
+        self, tasks: tuple[Task, ...], *, last_task_number: int | None = None
+    ) -> SessionState:
+        """Return a copy with a different task list, and optionally a new id high-water mark.
 
         Built from the fields rather than `model_copy`, which would carry over the cached
         `task_ids` of the old list.
         """
         fields = {name: getattr(self, name) for name in type(self).model_fields}
-        return SessionState(**{**fields, "tasks": tasks})
+        fields["tasks"] = tasks
+        if last_task_number is not None:
+            fields["last_task_number"] = last_task_number
+        return SessionState(**fields)
 
     def task(self, task_id: str) -> Task | None:
         """Return the task with this id, or None."""
