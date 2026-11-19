@@ -33,6 +33,7 @@ from planner.adapters.endpoint_guard import loggable
 from planner.adapters.logs import emit
 from planner.adapters.transcript import transcript
 from planner.adapters.views import (
+    PACE_CHART_HEIGHT,
     PLACE_HEADERS,
     TASK_HEADERS,
     TRAVEL_HEADERS,
@@ -148,7 +149,8 @@ def _icon(name: str) -> str:
 
 
 THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
-CSS: Final = """
+CSS: Final = (
+    """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
 .header { flex-wrap: wrap; align-items: center; }
 .header > div:first-child { flex: 1 0 100% !important; }
@@ -211,6 +213,9 @@ CSS: Final = """
   border-radius: var(--radius-lg); }
 .examples button:hover, .example:hover { border-color: var(--border-color-accent) !important; }
 """
+    # Fixed so a redraw never shortens the page, which would clamp the scroll position to the top.
+    f".pace-chart {{ min-height: {PACE_CHART_HEIGHT}px; }}"
+)
 WEEKDAYS: Final = tuple(Weekday)
 # The most a pace control accepts is the domain's own bound on a number of minutes, read from the
 # schema Pydantic derives from `Minutes`, not from how the annotation happens to be assembled.
@@ -730,7 +735,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 gr.Markdown(
                     "Example: how a 10-hour task is spread across the days.", elem_classes="caption"
                 )
-                chart = gr.Plot(label="Pace", show_label=False)
+                chart = gr.Plot(label="Pace", show_label=False, elem_classes="pace-chart")
                 reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
         with gr.Sidebar(label="Settings", open=False, position="right"):
             gr.Markdown("### Session")

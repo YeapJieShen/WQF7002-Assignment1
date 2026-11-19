@@ -35,6 +35,8 @@ TRAVEL_HEADERS: Final = ["From", "To", "Mode", "Min", "Buffer"]
 SAMPLE_MIN: Final = 600
 SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
+PACE_CHART_HEIGHT: Final = 400
+"""Pixels; also the chart container's minimum height (`ui.CSS`), so redraws keep the page length."""
 EXAMPLES_SHOWN: Final = 3
 FILL_ALPHA: Final = 0.3
 """How opaque the area under the Pace curve is."""
@@ -275,6 +277,7 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
     )
     figure.update_layout(
         showlegend=False,
+        height=PACE_CHART_HEIGHT,
         margin={"l": 50, "r": 50, "t": 20, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",

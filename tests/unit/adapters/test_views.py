@@ -9,6 +9,7 @@ from planner.adapters.session import Usage
 from planner.adapters.views import (
     EXAMPLES_SHOWN,
     NODE_SIZE,
+    PACE_CHART_HEIGHT,
     SAMPLE_DAYS,
     SAMPLE_MIN,
     THINKING_WORDS,
@@ -195,6 +196,12 @@ def test_the_pace_chart_ignores_the_time_of_day(state: SessionState, base: BaseD
     evening = state.model_copy(update={"now": datetime(2026, 11, 19, 21, 40)})
     assert pace_chart(morning, base).equals(pace_chart(evening, base))
     assert pace_figure(morning, base, "#336699") == pace_figure(evening, base, "#336699")
+
+
+def test_the_pace_figure_has_a_fixed_height_so_a_redraw_keeps_the_page_length(
+    state: SessionState, base: BaseData
+) -> None:
+    assert pace_figure(state, base, "#336699").layout.height == PACE_CHART_HEIGHT
 
 
 def test_a_rejection_keeps_its_reason_outside_the_italics() -> None:
