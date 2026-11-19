@@ -584,7 +584,10 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         import_btn.upload(ctl.import_state, [tab, import_btn], reset, api_visibility="private")
         export_btn.click(ctl.export_state, tab, download, api_visibility="private")
         transcript_btn.click(ctl.export_transcript, tab, download, api_visibility="private")
-        settings_btn.click(lambda: gr.Sidebar(open=True), None, sidebar, api_visibility="private")
+        # Not queued: opening the sidebar must never wait behind, or be refused by, a full queue.
+        settings_btn.click(
+            lambda: gr.Sidebar(open=True), None, sidebar, api_visibility="private", queue=False
+        )
         choice.change(
             lambda c: gr.update(visible=c == "custom"), choice, own, api_visibility="private"
         )
