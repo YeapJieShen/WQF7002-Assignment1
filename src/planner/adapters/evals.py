@@ -222,5 +222,5 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover - needs
     emit(LOG, "eval_done", report_md=f"{stem}.md", report_json=f"{stem}.json")
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover - script entry point
     main()

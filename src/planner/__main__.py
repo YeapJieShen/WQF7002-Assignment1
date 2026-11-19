@@ -28,5 +28,5 @@ def main() -> None:  # pragma: no cover - starts a server
     demo.launch(theme=THEME, css=CSS, pwa=True, max_file_size=settings.upload_max_bytes)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover - script entry point
     main()
