@@ -61,6 +61,9 @@ def persona_label(state: SessionState) -> str:
 
 
 def persona_choices() -> list[tuple[str, str]]:
-    """Every sample persona as a (label, name) pair for a dropdown, ordered by start time."""
+    """Every sample persona as a (label, name) pair for a dropdown, numbered by start time."""
     loaded = sorted(((load_persona(n), n) for n in list_personas()), key=lambda p: p[0].now)
-    return [(persona_label(state), name) for state, name in loaded]
+    return [
+        (f"Persona {i}: {persona_label(state)}", name)
+        for i, (state, name) in enumerate(loaded, start=1)
+    ]
