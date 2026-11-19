@@ -23,6 +23,7 @@ class ErrorCode(StrEnum):
     UNKNOWN_PLACE = "unknown_place"
     UNKNOWN_TASK = "unknown_task"
     CYCLE = "cycle"
+    UNSTATED_VALUE = "unstated_value"
 
 
 @dataclass(frozen=True, slots=True)

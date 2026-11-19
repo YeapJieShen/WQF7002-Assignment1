@@ -4,7 +4,8 @@
 
 Two stages, both deterministic:
 1. Shape: allowlist, then the tool's argument model (types, ranges, no unexpected arguments).
-2. Meaning: checks that need the current state (places, task IDs, horizon, dependency cycles).
+2. Meaning: checks that need the current state (places, task IDs, horizon, dependency cycles),
+   and that a stated duration or deadline quotes the user's own words from this turn.
 
 A rejected call carries issues phrased for the model to correct; it is never silently dropped.
 """
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from pydantic import BaseModel, ValidationError
 
+from planner.app.prompt import is_forwarded
 from planner.app.tools.args import (
     TOOLS_BY_NAME,
     AddTaskArgs,
@@ -33,6 +35,7 @@ from planner.domain.errors import ErrorCode, Issue
 from planner.domain.models import ANYWHERE, BaseData, SessionState, TaskType
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date, datetime
 
     from pydantic_core import ErrorDetails
@@ -106,7 +109,13 @@ def reject_malformed(name: str | None, error: str) -> Rejected:
     return Rejected((Issue(ErrorCode.MALFORMED_CALL, name or "name", error or "unparseable call"),))
 
 
-def validate_call(name: object, raw_args: object, state: SessionState, base: BaseData) -> Verdict:
+def validate_call(
+    name: object,
+    raw_args: object,
+    state: SessionState,
+    base: BaseData,
+    said: Sequence[str] = (),
+) -> Verdict:
     """Validate one tool call: allowlist, shape, then meaning against the current state.
 
     Args:
@@ -114,6 +123,8 @@ def validate_call(name: object, raw_args: object, state: SessionState, base: Bas
         raw_args: Arguments as given by the model.
         state: The current session state.
         base: The read-only reference data.
+        said: The user's messages in the current turn. A duration or deadline must quote one of
+            them; pasted messages (see `forwarded`) do not count.
 
     Returns:
         `Accepted` with typed arguments, or `Rejected` with the issues found.
@@ -130,7 +141,8 @@ def validate_call(name: object, raw_args: object, state: SessionState, base: Bas
         args = tool.model_validate(raw_args)
     except ValidationError as exc:
         return Rejected(_issues_from_pydantic(exc.errors(), tool))
-    issues = _MeaningChecker(state, base).check(args)
+    own = tuple(_normalised(m) for m in said if not is_forwarded(m))
+    issues = _MeaningChecker(state, base, own).check(args)
     return Rejected(tuple(issues)) if issues else Accepted(args)
 
 
@@ -205,6 +217,10 @@ def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]
     return list(model.model_fields)
 
 
+def _normalised(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
 def _task_consistency(prefix: str, task_type: TaskType, fields: _TimedTask) -> list[Issue]:
     """Cross-field checks on a whole task, as it would be after the call."""
     issues = []
@@ -227,12 +243,15 @@ class _MeaningChecker:
 
     state: SessionState
     base: BaseData
+    said: tuple[str, ...]  # the user's own words this turn, normalised by `_normalised`
 
     def check(self, args: ToolArgs) -> list[Issue]:  # noqa: PLR0911 - one return per tool
         """Return every semantic problem with already well-shaped arguments."""
         match args:
             case AddTaskArgs():
                 return [
+                    *self._stated(args.duration_min, args.duration_quote, "duration", ""),
+                    *self._stated(args.deadline, args.deadline_quote, "deadline", ""),
                     *self._in_horizon(args.deadline, "deadline"),
                     *self._in_horizon(args.earliest_start, "earliest_start"),
                     *self._known_place(args.place, "place", allow_anywhere=True),
@@ -270,6 +289,8 @@ class _MeaningChecker:
         patch = args.fields
         issues = [
             *self._known_tasks((args.task_id,), "task_id"),
+            *self._stated(patch.duration_min, patch.duration_quote, "duration", "fields."),
+            *self._stated(patch.deadline, patch.deadline_quote, "deadline", "fields."),
             *self._in_horizon(patch.deadline, "fields.deadline"),
             *self._in_horizon(patch.earliest_start, "fields.earliest_start"),
             *self._known_place(patch.place, "fields.place", allow_anywhere=True),
@@ -284,9 +305,25 @@ class _MeaningChecker:
                 )
         current = self.state.task(args.task_id)
         if current is not None:
-            merged = current.model_copy(update=patch.model_dump(exclude_none=True))
+            merged = current.model_copy(update=patch.changes())
             issues += _task_consistency("fields.", merged.type, merged)
         return issues
+
+    def _stated(self, value: object, quote: str | None, what: str, prefix: str) -> list[Issue]:
+        """Reject a duration or deadline unless it quotes the user's own words this turn."""
+        value_field = prefix + ("duration_min" if what == "duration" else what)
+        quote_field = f"{prefix}{what}_quote"
+        words = _normalised(quote or "")
+        if value is None or (words and any(words in message for message in self.said)):
+            return []
+        problem = (
+            f"'{quote}' is not in the user's messages this turn"
+            if words
+            else f"{value_field} needs {quote_field}, the user's own words that state it"
+        )
+        advice = f"do not guess: ask the user for it, or leave {value_field} out"
+        message = f"{problem}. If the user has not stated a {what}, {advice}"
+        return [Issue(ErrorCode.UNSTATED_VALUE, quote_field, message)]
 
     def _in_horizon(self, value: datetime | None, field: str) -> list[Issue]:
         now = self.state.now

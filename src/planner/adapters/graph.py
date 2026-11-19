@@ -143,7 +143,8 @@ class _Steps:
         args: object
         if last.tool_calls:
             call = last.tool_calls[0]
-            verdict = validate_call(call["name"], call["args"], state["session"], self._base)
+            said = _said_this_turn(state["messages"])
+            verdict = validate_call(call["name"], call["args"], state["session"], self._base, said)
             call_id = call["id"]
             tool, args = call["name"], call["args"]
         else:
@@ -251,6 +252,19 @@ def _timed[**P, R](name: str, node: Callable[P, R]) -> Callable[P, R]:
 
 def _record_args(args: object) -> str:
     return args if isinstance(args, str) else json.dumps(args, default=str)
+
+
+def _said_this_turn(messages: Sequence[AnyMessage]) -> tuple[str, ...]:
+    """The user's messages since the assistant's last plain reply, oldest first."""
+    said: list[str] = []
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and not (
+            message.tool_calls or message.invalid_tool_calls
+        ):
+            break
+        if isinstance(message, HumanMessage):
+            said.append(message.text)
+    return tuple(reversed(said))
 
 
 def _last_ai(state: AgentState) -> AIMessage:
