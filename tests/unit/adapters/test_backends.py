@@ -183,6 +183,27 @@ def test_endpoints_by_default() -> None:
     assert not backend.zerogpu
 
 
+def test_the_operators_keys_are_registered_with_the_logs_but_not_the_placeholder() -> None:
+    from planner.adapters import logs  # noqa: PLC0415
+
+    logs._SECRETS.clear()
+    settings = Settings(
+        _env_file=None,
+        llm_endpoints=(
+            Endpoint(
+                name="a",
+                base_url="https://a.test/v1",
+                model="m",
+                api_key=SecretStr("sk-operator-key-1"),
+            ),
+            Endpoint(name="b", base_url="http://localhost:11434/v1", model="m"),
+        ),
+    )
+    build_backend(settings)
+    assert set(logs._SECRETS) == {"sk-operator-key-1"}
+    logs._SECRETS.clear()
+
+
 class _Engine:
     def render(self, _chat: object, _tools: object, /) -> str:
         return ""

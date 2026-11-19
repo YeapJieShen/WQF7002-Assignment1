@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit
+from planner.adapters.logs import activate, bind, deactivate, elapsed_ms, emit, forget_secret
 from planner.adapters.session import Done, Event, Session, Stage, Token
 from planner.adapters.transcript import Turn
 from planner.adapters.views import Message, stage_message
@@ -130,9 +130,16 @@ def use_endpoint(tab: Tab, backend: Backend, custom: Endpoint | None) -> None:
     Raises:
         ValueError: If the backend does not accept `custom`; the tab is left as it was.
     """
-    tab.switch.model = backend.model(custom)
+    tab.switch.model = backend.model(custom)  # registers the new key with the logs
     tab.switch.source = _source(custom)
+    release_endpoint(tab.custom)
     tab.custom = custom
+
+
+def release_endpoint(custom: Endpoint | None) -> None:
+    """Stop scrubbing `custom`'s key from the logs, once nothing else uses it."""
+    if custom is not None:
+        forget_secret(custom.api_key.get_secret_value())
 
 
 def stream_turn(  # noqa: PLR0913 - the turn's collaborators
