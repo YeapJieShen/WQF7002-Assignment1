@@ -7,6 +7,7 @@ langchain-core==1.7.0
 langchain-openai==1.7.3
 pydantic==2.14.1
 pydantic-settings==2.16.1
-# ZeroGPU supports torch 2.8 and later.
-torch>=2.8
-transformers>=4.56
+# torch matches the build preinstalled on the ZeroGPU Space (2.13.0), so pip does not replace it.
+# transformers matches the version the local GPU smoke test ran.
+torch==2.13.0
+transformers==5.23.0

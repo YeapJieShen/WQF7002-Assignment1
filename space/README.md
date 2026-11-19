@@ -8,6 +8,7 @@ sdk_version: 6.31.0
 python_version: "3.12"
 app_file: app.py
 hf_oauth: true
+# openid and profile are always granted; no extra scopes are requested (hf_oauth_scopes omitted on purpose).
 pinned: false
 license: mit
 short_description: A planning agent that knows its limits (WQF7002 A1)
