@@ -436,6 +436,35 @@ def test_stated_values_are_accepted_ignoring_case_and_spacing(
     assert _issues("add_task", args, said, state, base) == []
 
 
+@pytest.mark.parametrize("quote", ["salon", "a", "this"])
+def test_a_duration_quote_must_state_an_amount_of_time(
+    quote: str, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "Haircut", "duration_min": 60, "duration_quote": quote}
+    [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "duration_quote")
+    assert f"'{quote}' does not state a duration" in issue.message
+
+
+@pytest.mark.parametrize("quote", ["about 20 minutes", "2 hours", "an hour", "1h", "Half an Hour"])
+def test_a_duration_quote_with_an_amount_of_time_is_accepted(
+    quote: str, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "Haircut", "duration_min": 60, "duration_quote": quote}
+    assert _issues("add_task", args, (f"Add a haircut, {quote}",), state, base) == []
+
+
+def test_a_deadline_quote_must_be_more_than_junk(state: SessionState, base: BaseData) -> None:
+    args = {"title": "Haircut", "deadline": "2026-11-01T18:00", "deadline_quote": "a"}
+    [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "deadline_quote")
+    assert "'a' does not state a deadline" in issue.message
+    punctuation = {**args, "deadline_quote": "..."}
+    assert _issues("add_task", punctuation, ("Add it ...",), state, base) != []
+    week = {**args, "deadline_quote": "this week"}
+    assert _issues("add_task", week, (HAIRCUT,), state, base) == []
+
+
 def test_a_blank_quote_counts_as_missing(state: SessionState, base: BaseData) -> None:
     args = {"title": "x", "duration_min": 30, "duration_quote": "  "}
     [issue] = _issues("add_task", args, (HAIRCUT,), state, base)

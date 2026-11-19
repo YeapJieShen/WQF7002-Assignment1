@@ -106,6 +106,10 @@ Short records of choices that are not obvious from the code: context, decision, 
   `forwarded`) is someone else's words and never counts. The graph hands the turn's texts to
   `validate_call` as plain strings, so `app` stays framework-free. Quotes are never stored; an
   update that changes neither value needs none.
+  The quote must also say something: a duration quote needs an amount of time (digits or a word
+  from one to twelve, "half", "a"/"an", then a unit such as min, hour, h), so "salon" or "a" fails;
+  a deadline quote needs 3 or more characters with a letter or digit, so the user's own relative
+  phrase ("this week", "tonight") passes without a date pattern.
 - Consequence: a value given in an earlier turn must be restated, and a quote proves only that
   the words were said, not that the number matches them. Personas and loaded files are not
   checked.
