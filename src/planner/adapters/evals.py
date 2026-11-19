@@ -11,17 +11,20 @@ tools never ran). Whether the reply is right is judged by a person reading the r
 from __future__ import annotations
 
 import argparse
+import logging
 import time
 import tomllib
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
 from planner.adapters.backends import build_backend
 from planner.adapters.config import Settings
 from planner.adapters.data import PERSONA, load_base, load_persona, load_rules
+from planner.adapters.logs import activate, configure_logging, deactivate, emit
 from planner.adapters.session import Session
 from planner.app.calls import CallRecord
 from planner.app.prompt import forwarded
@@ -31,6 +34,8 @@ if TYPE_CHECKING:
 
     from planner.adapters.backends import AppBackend
     from planner.domain.models import SessionState
+
+LOG = logging.getLogger("planner.evals")
 
 
 def default_session(backend: AppBackend, state: SessionState | None = None) -> Session:
@@ -112,6 +117,7 @@ def run_case(
     """
     session = make_session()
     before = len(session.state.tasks)
+    activate(uuid4().hex, session.log_id)  # one id for the case, so its events group together
     started = time.perf_counter()
     confirm = None
     error = None
@@ -127,6 +133,8 @@ def run_case(
         if error is None:
             raise
         text = ""
+    finally:
+        deactivate()
     seconds = time.perf_counter() - started
     calls = session.call_log
     checked = {c.tool for c in calls if c.stage == "check"}
@@ -193,6 +201,8 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover - needs
     args = parser.parse_args(argv)
     cases = [c for c in load_cases(args.cases) if not args.only or c.id in args.only]
     settings = Settings()
+    # Readable lines on the terminal, whatever PLANNER_LOG_FORMAT says for the app.
+    configure_logging(settings.log_level, "text")
     backend = backend_label(settings)
     served = build_backend(settings)
     outcomes = []
@@ -202,14 +212,14 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover - needs
             lambda: default_session(served),
             lambda e: served.explain(e, signed_in=False, custom=False),
         )
-        print(f"{case.id}: calls ok={outcome.calls_ok} in {outcome.seconds}s")  # noqa: T201
+        emit(LOG, "eval_case", case=case.id, calls_ok=outcome.calls_ok, seconds=outcome.seconds)
         outcomes.append(outcome)
     args.out.mkdir(parents=True, exist_ok=True)
     stem = args.out / f"{datetime.now():%Y%m%d-%H%M%S}"  # noqa: DTZ005 - local file name
     stem.with_suffix(".md").write_text(to_markdown(outcomes, backend), "utf-8")
     dump = "[" + ",\n".join(o.model_dump_json(indent=2) for o in outcomes) + "]\n"
     stem.with_suffix(".json").write_text(dump, "utf-8")
-    print(f"wrote {stem}.md and {stem}.json")  # noqa: T201
+    emit(LOG, "eval_done", report_md=f"{stem}.md", report_json=f"{stem}.json")
 
 
 if __name__ == "__main__":  # pragma: no cover
