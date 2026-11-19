@@ -38,6 +38,10 @@ class ProviderError(Exception):
     """A custom endpoint failed; the message is the provider's, without the key."""
 
 
+class EndpointTimeoutError(ProviderError):
+    """A custom endpoint did not answer in time; the message says how long it was given."""
+
+
 @dataclass(frozen=True)
 class AppBackend:
     """Implements `Backend` for one deployment.
@@ -60,11 +64,13 @@ class AppBackend:
             return self.default
         if urlsplit(custom.base_url).scheme != "https":
             raise ValueError(NOT_HTTPS)
-        return _Redacting(client(custom), custom.api_key.get_secret_value())
+        return _Redacting(client(custom), custom.api_key.get_secret_value(), custom.timeout_s)
 
     def explain(self, error: Exception, /, *, signed_in: bool, custom: bool) -> str | None:
         """Return the chat message for a backend failure, or None if `error` is not one."""
         if custom:
+            if isinstance(error, EndpointTimeoutError):
+                return str(error)
             if isinstance(error, ProviderError):
                 return f"Your endpoint returned an error: {error}"
             return None
@@ -92,10 +98,17 @@ class _Redacting:
 
     chat: ChatRunnable = field(repr=False)
     key: str = field(repr=False)
+    timeout_s: float
 
     def invoke(self, messages: Sequence[AnyMessage], /) -> AIMessage:
         try:
             return self.chat.invoke(messages)
+        except openai.APITimeoutError:
+            msg = (
+                f"Your endpoint didn't answer within {self.timeout_s:g} s. "
+                "Check that it is up, or try a faster model."
+            )
+            raise EndpointTimeoutError(msg) from None
         except openai.OpenAIError as exc:
             text = str(exc).replace(self.key, REDACTED) if self.key else str(exc)
             raise ProviderError(text) from None  # the original may quote the key
@@ -107,5 +120,10 @@ def build_backend(settings: Settings) -> AppBackend:
     "zerogpu" loads the model onto the GPU, so call this once while the app starts.
     """
     if settings.backend == "zerogpu":
-        return AppBackend(zerogpu.TemplateChat(engine=zerogpu.load_engine()), zerogpu=True)
+        chat = zerogpu.TemplateChat(
+            engine=zerogpu.load_engine(settings),
+            call_open=settings.tool_call_open,
+            call_close=settings.tool_call_close,
+        )
+        return AppBackend(chat, zerogpu=True)
     return AppBackend(build_model(settings), zerogpu=False)

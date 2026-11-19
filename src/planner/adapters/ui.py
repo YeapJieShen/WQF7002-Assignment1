@@ -13,13 +13,13 @@ import random
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast, get_args
 
 import gradio as gr
 from pydantic import SecretStr
 
 from planner.adapters.chat import History, Tab, new_tab, stream_turn, use_endpoint
-from planner.adapters.config import Endpoint
+from planner.adapters.config import DUMMY_API_KEY, Endpoint
 from planner.adapters.data import load_base, load_persona, load_rules
 from planner.adapters.transcript import transcript
 from planner.adapters.views import (
@@ -33,7 +33,7 @@ from planner.adapters.views import (
     task_rows,
     travel_rows,
 )
-from planner.domain.models import Pace, SessionState, Weekday
+from planner.domain.models import Minutes, Pace, SessionState, Weekday
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -42,13 +42,13 @@ if TYPE_CHECKING:
     from gradio.components.chatbot import ExampleMessage
 
     from planner.adapters.backend import Backend
+    from planner.adapters.config import Settings
     from planner.domain.models import BaseData
 
 PERSONA: Final = "persona_wednesday"
 START_PLACE: Final = "home"
 FENCE: Final = "<<<"
 BOX_ID: Final = "message-box"
-STATE_TTL_S: Final = 3600
 # Marks a message as pasted: the page prepends it on submit and `chat` strips it.
 PASTE_MARK: Final = "⁣"
 # Ctrl/Cmd+V flags the next message as pasted; Ctrl+Shift+V (plain-text paste) does not.
@@ -78,6 +78,19 @@ LEAVE_JS: Final = """() => {
 }"""
 CHAT_CHANGED_JS: Final = "(chat) => { window.plannerHasChat = Boolean(chat && chat.length); }"
 SESSION_LOST: Final = "This tab's session was lost, likely by a server restart. Reload the page."
+KB: Final = 1000
+MB: Final = 1000 * KB
+MESSAGE_TOO_LONG: Final = (
+    "Message is {actual:,} characters; the limit is {limit:,}. Shorten it or split it."
+)
+FILE_TOO_LARGE: Final = "File is {actual}; the limit is {limit}. Export a smaller session."
+
+
+def size_text(size: int) -> str:
+    """Show a byte count the way the limits are stated, such as "3.2 MB"."""
+    return f"{size / MB:.1f} MB" if size >= MB else f"{size / KB:.1f} KB"
+
+
 CHARGE_NOTICE: Final = (
     "Your own endpoint is called from this server with your key, which is held for this tab "
     "only: never stored, logged or exported. **Your provider will charge you for its use.**\n\n"
@@ -102,7 +115,8 @@ CSS: Final = """
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
 WEEKDAYS: Final = tuple(Weekday)
-MAX_MIN: Final = 1440
+# The most a pace control accepts is the domain's own bound on a number of minutes.
+MAX_MIN: Final[int] = next(c.le for c in get_args(Minutes)[1].metadata if hasattr(c, "le"))
 
 
 def real_now() -> datetime:
@@ -192,6 +206,7 @@ class Controller:
     def __init__(
         self,
         backend: Backend,
+        settings: Settings,
         *,
         clock: Callable[[], datetime] = real_now,
         rng: random.Random | None = None,
@@ -200,10 +215,12 @@ class Controller:
 
         Args:
             backend: Supplies models and explains failures and cost.
+            settings: The limits and defaults the handlers apply.
             clock: Tells the real time; replaced in tests.
             rng: Picks the example messages; replaced in tests.
         """
         self.backend = backend
+        self.settings = settings
         self.clock = clock
         self.rng = rng or random.Random()  # noqa: S311 - example messages, nothing secret
         self.base: BaseData = load_base()
@@ -246,7 +263,14 @@ class Controller:
     def boot(self) -> tuple[Any, ...]:
         """Start an empty tab on the real clock."""
         state = SessionState(now=self.clock(), location=START_PLACE)
-        tab = new_tab(self.backend, self.base, self.rules, state, real_clock=True)
+        tab = new_tab(
+            self.backend,
+            self.base,
+            self.rules,
+            state,
+            real_clock=True,
+            max_rejections=self.settings.max_rejections,
+        )
         return tab, *self.full(tab)
 
     def demo(self, tab: Tab | None) -> tuple[Any, ...]:
@@ -255,8 +279,16 @@ class Controller:
 
     def import_state(self, tab: Tab | None, path: str | None) -> tuple[Any, ...]:
         """Start over from an exported state file."""
+        file = Path(path or "")
+        # Gradio's upload cap rejects most oversized files before this runs; this names the sizes.
+        if file.is_file() and (size := file.stat().st_size) > self.settings.import_max_bytes:
+            raise gr.Error(
+                FILE_TOO_LARGE.format(
+                    actual=size_text(size), limit=size_text(self.settings.import_max_bytes)
+                )
+            )
         try:
-            state = SessionState.model_validate_json(Path(path or "").read_text("utf-8"))
+            state = SessionState.model_validate_json(file.read_text("utf-8"))
             if state.location not in self.base.place_ids:
                 msg = f"unknown place: {state.location}"
                 raise ValueError(msg)  # noqa: TRY301 - one message for every way a file is bad
@@ -268,7 +300,13 @@ class Controller:
         custom = old.custom if old else None
         try:
             tab = new_tab(
-                self.backend, self.base, self.rules, state, real_clock=False, custom=custom
+                self.backend,
+                self.base,
+                self.rules,
+                state,
+                real_clock=False,
+                max_rejections=self.settings.max_rejections,
+                custom=custom,
             )
         except ValueError as exc:
             raise gr.Error(str(exc)) from exc
@@ -295,7 +333,8 @@ class Controller:
                     name="custom",
                     base_url=url.strip(),
                     model=model.strip(),
-                    api_key=SecretStr(key or "ollama"),
+                    api_key=SecretStr(key or DUMMY_API_KEY),
+                    timeout_s=self.settings.custom_timeout_s,
                 )
             use_endpoint(live, self.backend, custom)
         except ValueError as exc:
@@ -345,6 +384,10 @@ class Controller:
         text = text.removeprefix(PASTE_MARK)
         if not text.strip():
             yield gr.skip(), gr.skip(), live
+            return
+        if len(text) > self.settings.message_max_chars:
+            note = MESSAGE_TOO_LONG.format(actual=len(text), limit=self.settings.message_max_chars)
+            yield [*history, {"role": "assistant", "content": note}], gr.skip(), live
             return
         if live.real_clock:
             live.session.update_session(now=self.clock())
@@ -415,13 +458,13 @@ class Controller:
 
 
 def build_app(  # noqa: PLR0915 - the layout is one flat declaration of components and wiring
-    backend: Backend, *, controller: Controller | None = None
+    backend: Backend, settings: Settings, *, controller: Controller | None = None
 ) -> gr.Blocks:
     """Lay out the app; each browser tab gets its own session, held server-side."""
-    ctl = controller or Controller(backend)
+    ctl = controller or Controller(backend, settings)
     app = gr.Blocks(title="Planning delegate")
     with app:
-        tab = gr.State(time_to_live=STATE_TTL_S)
+        tab = gr.State(time_to_live=settings.state_ttl_s)
         with gr.Row(equal_height=True, elem_classes="header"):
             gr.Markdown("# Planning delegate", min_width=220)
             chip = gr.Markdown(elem_classes="chip")
@@ -444,6 +487,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     show_label=False,
                     placeholder="Ask me to plan something, or paste a message to look at",
                     max_lines=8,
+                    max_length=settings.message_max_chars,
                     submit_btn=True,
                 )
             with gr.Tab("Tasks"):
@@ -557,15 +601,24 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         )
 
         box.submit(None, box, box, js=MARK_PASTE_JS).then(
-            ctl.chat, sent, [chatbot, box, tab], api_name="chat"
+            ctl.chat,
+            sent,
+            [chatbot, box, tab],
+            api_name="chat",
+            concurrency_limit=settings.concurrency_limit,
         ).then(ctl.refresh, tab, after, api_visibility="private")
         chatbot.example_select(ctl.pick_example, None, box, api_visibility="private").then(
-            ctl.chat, sent, [chatbot, box, tab], api_visibility="private"
+            ctl.chat,
+            sent,
+            [chatbot, box, tab],
+            api_visibility="private",
+            concurrency_limit=settings.concurrency_limit,
         ).then(ctl.refresh, tab, after, api_visibility="private")
         for button, handler in ((yes, ctl.approve), (no, ctl.decline)):
             button.click(handler, [tab, chatbot], chatbot, api_visibility="private").then(
                 ctl.refresh, tab, after, api_visibility="private"
             )
+    app.queue(max_size=settings.queue_max_size)
     # The login button registers its own load check as a public endpoint; hide it.
     for fn in app.fns.values():
         if fn.name == "_check_login_status":

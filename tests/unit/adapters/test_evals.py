@@ -27,7 +27,7 @@ def call(name: str, args: dict[str, object]) -> AIMessage:
 
 
 def session_of(model: ScriptedModel, state: SessionState, base: BaseData) -> Session:
-    return Session(model, base, "rules", state)
+    return Session(model, base, "rules", state, max_rejections=3)
 
 
 def test_the_case_file_has_the_eight_required_tests() -> None:

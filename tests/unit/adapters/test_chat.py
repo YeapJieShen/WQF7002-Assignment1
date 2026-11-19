@@ -14,7 +14,7 @@ def make(
     model: Any, state: SessionState, base: BaseData, *, price: str | None = "12 tokens"
 ) -> tuple[FakeBackend, Tab]:
     backend = FakeBackend(model, price=price)
-    return backend, new_tab(backend, base, "rules", state, real_clock=False)
+    return backend, new_tab(backend, base, "rules", state, real_clock=False, max_rejections=3)
 
 
 def run(tab: Tab, backend: FakeBackend, text: str, *, signed_in: bool = False) -> list[Any]:

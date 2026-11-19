@@ -10,11 +10,15 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from planner.adapters import zerogpu
+from planner.adapters.config import Settings
 from planner.adapters.llm import tool_specs
 from planner.adapters.session import Done, Reply, Session, Stage, Token, Usage
-from planner.adapters.zerogpu import TemplateChat, parse_reply, to_chat, visible_end
+from planner.adapters.zerogpu import TemplateChat, to_chat
 from planner.domain.models import BaseData, SessionState
 
+SETTINGS = Settings(_env_file=None)
+OPEN, CLOSE = SETTINGS.tool_call_open, SETTINGS.tool_call_close
 CALL = '<tool_call>\n{"name": "add_task", "arguments": {"title": "Post parcel"}}\n</tool_call>'
 
 
@@ -34,6 +38,18 @@ class FakeEngine:
 
     def generate(self, prompt: str, /) -> Iterator[str]:  # noqa: ARG002 - fixed script
         yield from next(self._replies)
+
+
+def parse_reply(text: str) -> AIMessage:
+    return zerogpu.parse_reply(text, call_open=OPEN, call_close=CLOSE)
+
+
+def visible_end(text: str, *, final: bool) -> int:
+    return zerogpu.visible_end(text, final=final, call_open=OPEN)
+
+
+def template_chat(engine: FakeEngine) -> TemplateChat:
+    return TemplateChat(engine=engine, call_open=OPEN, call_close=CLOSE)
 
 
 # --- parse_reply ---------------------------------------------------------------------------
@@ -173,7 +189,7 @@ def test_unknown_message_types_are_refused() -> None:
 
 def test_invoke_offers_the_tools_and_reports_usage() -> None:
     engine = FakeEngine(["Hello ", "there."])
-    reply = TemplateChat(engine=engine).invoke([HumanMessage("hi")])
+    reply = template_chat(engine).invoke([HumanMessage("hi")])
     assert reply.content == "Hello there."
     assert reply.usage_metadata == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
     [(chat, tools)] = engine.prompts
@@ -182,7 +198,7 @@ def test_invoke_offers_the_tools_and_reports_usage() -> None:
 
 
 def test_invoke_returns_a_tool_call() -> None:
-    reply = TemplateChat(engine=FakeEngine([CALL])).invoke([HumanMessage("add")])
+    reply = template_chat(FakeEngine([CALL])).invoke([HumanMessage("add")])
     assert reply.content == ""
     assert reply.tool_calls[0]["name"] == "add_task"
 
@@ -192,7 +208,7 @@ def test_a_session_streams_reply_text_but_never_tool_call_markup(
 ) -> None:
     pieces = ["Adding", " it.", "\n<", "tool_", "call>", CALL.removeprefix("<tool_call>")]
     engine = FakeEngine(pieces, ["Done", " <b>", "!"])
-    session = Session(TemplateChat(engine=engine), base, "rules", state)
+    session = Session(template_chat(engine), base, "rules", state, max_rejections=3)
     events = list(session.stream("add a parcel task"))
     tokens = "".join(e.text for e in events if isinstance(e, Token))
     assert tokens == "Adding it.\nDone <b>!"
@@ -207,7 +223,7 @@ def test_a_session_streams_reply_text_but_never_tool_call_markup(
 
 def test_a_malformed_call_is_rejected_by_the_graph(state: SessionState, base: BaseData) -> None:
     engine = FakeEngine(['<tool_call>{"name": "add_task", "arguments": {</tool_call>'], ["Sorry."])
-    session = Session(TemplateChat(engine=engine), base, "rules", state)
+    session = Session(template_chat(engine), base, "rules", state, max_rejections=3)
     events = list(session.stream("add"))
     [stage] = [e.record for e in events if isinstance(e, Stage)]
     assert stage.outcome.startswith("rejected")
@@ -216,3 +232,12 @@ def test_a_malformed_call_is_rejected_by_the_graph(state: SessionState, base: Ba
     retry_chat, _ = engine.prompts[1]
     assert retry_chat[-3]["tool_calls"][0]["function"]["arguments"].startswith('{"name"')
     assert retry_chat[-2]["content"].startswith("Rejected:")
+
+
+def test_other_markers_are_honoured() -> None:
+    marked = '[[call]]{"name": "add_task", "arguments": {"title": "x"}}[[end]]'
+    reply = zerogpu.parse_reply("Ok " + marked, call_open="[[call]]", call_close="[[end]]")
+    assert reply.content == "Ok"
+    assert reply.tool_calls[0]["name"] == "add_task"
+    assert zerogpu.visible_end("Ok [[ca", final=False, call_open="[[call]]") == 3
+    assert zerogpu.visible_end("Ok " + marked, final=True, call_open="[[call]]") == 3

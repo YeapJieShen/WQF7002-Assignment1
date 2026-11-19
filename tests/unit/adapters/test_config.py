@@ -36,3 +36,26 @@ def test_an_empty_endpoint_list_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("PLANNER_LLM_ENDPOINTS", "[]")
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_limits_and_model_settings_have_documented_defaults() -> None:
+    s = Settings(_env_file=None)
+    assert (s.concurrency_limit, s.queue_max_size, s.custom_timeout_s) == (4, 20, 30)
+    assert (s.message_max_chars, s.import_max_bytes, s.state_ttl_s) == (4000, 1_000_000, 3600)
+    assert s.zerogpu_model_id == "Qwen/Qwen3-4B-Instruct-2507"
+    assert (s.zerogpu_model_revision, s.zerogpu_max_new_tokens) == (None, 1024)
+    assert s.zerogpu_gpu_duration_s == 60
+    assert (s.tool_call_open, s.tool_call_close) == ("<tool_call>", "</tool_call>")
+
+
+def test_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLANNER_MESSAGE_MAX_CHARS", "50")
+    monkeypatch.setenv("PLANNER_ZEROGPU_MODEL_REVISION", "abc123")
+    s = Settings(_env_file=None)
+    assert (s.message_max_chars, s.zerogpu_model_revision) == (50, "abc123")
+
+
+def test_a_limit_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLANNER_QUEUE_MAX_SIZE", "0")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

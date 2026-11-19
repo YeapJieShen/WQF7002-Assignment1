@@ -9,8 +9,12 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from planner.adapters.chat import Tab
+from planner.adapters.config import Settings
+from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
+    FILE_TOO_LARGE,
     MARK_PASTE_JS,
+    MESSAGE_TOO_LONG,
     PASTE_MARK,
     SESSION_LOST,
     WATCH_PASTE_JS,
@@ -20,6 +24,7 @@ from planner.adapters.ui import (
     pace_from,
     pace_values,
     real_now,
+    size_text,
 )
 from planner.domain.models import Pace, Weekday
 from tests.unit.adapters.fakes import Boom, FailingModel, FakeBackend, ScriptedModel, call
@@ -28,9 +33,13 @@ NOW = datetime(2026, 11, 19, 9, 30)
 KEY = "sk-super-secret-key"
 
 
-def controller(model: Any = None) -> Controller:
+def settings(**overrides: Any) -> Settings:
+    return Settings(_env_file=None, **overrides)
+
+
+def controller(model: Any = None, **overrides: Any) -> Controller:
     backend = FakeBackend(model or ScriptedModel(), price=None)
-    return Controller(backend, clock=lambda: NOW, rng=random.Random(1))
+    return Controller(backend, settings(**overrides), clock=lambda: NOW, rng=random.Random(1))
 
 
 def boot(ctl: Controller) -> Tab:
@@ -110,6 +119,7 @@ def test_the_real_clock_follows_the_clock_on_each_message() -> None:
     times = [NOW, datetime(2026, 11, 19, 10, 0)]
     ctl = Controller(
         FakeBackend(ScriptedModel(AIMessage("ok"))),
+        settings(),
         clock=lambda: times.pop(0),
         rng=random.Random(1),
     )
@@ -308,7 +318,7 @@ def test_the_page_scripts_share_the_mark_and_skip_the_plain_text_paste() -> None
 
 
 def test_exactly_one_endpoint_is_public_and_the_key_is_not_among_its_inputs() -> None:
-    app = build_app(FakeBackend(ScriptedModel()))
+    app = build_app(FakeBackend(ScriptedModel()), settings())
     public = [f for f in app.fns.values() if f.api_visibility == "public"]
     assert [f.api_name for f in public] == ["chat"]
     key = next(b for b in app.blocks.values() if getattr(b, "label", None) == "API key")
@@ -321,3 +331,66 @@ def test_a_caller_without_a_page_gets_a_tab_of_its_own() -> None:
     frames = chat(ctl, None, "hi")
     assert isinstance(frames[0][2], Tab)
     assert frames[-1][0][-1]["content"] == "Hello."
+
+
+# --- limits --------------------------------------------------------------------------------
+
+
+def test_the_agent_gives_up_after_the_configured_rejections() -> None:
+    model = ScriptedModel(*[call("nope", {}) for _ in range(5)])
+    ctl = controller(model, max_rejections=1)
+    frames = chat(ctl, boot(ctl), "do it")
+    assert frames[-1][0][-1]["content"] == GAVE_UP
+    assert len(list(model._script)) == 4  # one call used, not three
+
+
+def test_a_message_over_the_limit_is_refused_with_both_numbers() -> None:
+    ctl = controller(message_max_chars=10)
+    tab = boot(ctl)
+    frames = chat(ctl, tab, "x" * 5210)
+    assert len(frames) == 1
+    note = frames[0][0][-1]["content"]
+    assert note == MESSAGE_TOO_LONG.format(actual=5210, limit=10)
+    assert "5,210 characters; the limit is 10. Shorten it or split it." in note
+    assert tab.turns == []
+
+
+def test_a_message_at_the_limit_goes_through() -> None:
+    ctl = controller(ScriptedModel(AIMessage("ok")), message_max_chars=10)
+    assert chat(ctl, boot(ctl), "x" * 10)[-1][0][-1]["content"] == "ok"
+
+
+def test_the_message_box_and_the_queue_use_the_settings() -> None:
+    app = build_app(
+        FakeBackend(ScriptedModel()),
+        settings(message_max_chars=123, queue_max_size=7, concurrency_limit=3, state_ttl_s=99),
+    )
+    box = next(b for b in app.blocks.values() if getattr(b, "elem_id", None) == "message-box")
+    assert getattr(box, "max_length", None) == 123
+    assert app._queue.max_size == 7
+    chat_fns = [f for f in app.fns.values() if f.name == "chat"]
+    assert chat_fns
+    assert {f.concurrency_limit for f in chat_fns} == {3}
+    state = next(b for b in app.blocks.values() if type(b).__name__ == "State")
+    assert getattr(state, "time_to_live", None) == 99
+
+
+def test_a_file_over_the_limit_is_refused_with_both_sizes(tmp_path: Path) -> None:
+    big = tmp_path / "big.json"
+    big.write_bytes(b" " * 3_200_000)
+    with pytest.raises(gr.Error) as caught:
+        controller(import_max_bytes=1_000_000).import_state(None, str(big))
+    assert caught.value.message == FILE_TOO_LARGE.format(actual="3.2 MB", limit="1.0 MB")
+    assert "File is 3.2 MB; the limit is 1.0 MB." in caught.value.message
+
+
+def test_sizes_read_as_a_person_would_say_them() -> None:
+    assert (size_text(512), size_text(3_200_000)) == ("0.5 KB", "3.2 MB")
+
+
+def test_a_custom_endpoint_gets_the_custom_timeout() -> None:
+    ctl = controller(custom_timeout_s=12)
+    tab = boot(ctl)
+    ctl.connect(tab, "custom", "https://x.test/v1", "m", KEY)
+    assert tab.custom is not None
+    assert tab.custom.timeout_s == 12
