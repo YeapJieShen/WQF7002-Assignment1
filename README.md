@@ -71,12 +71,15 @@ Defaults are in `src/planner/adapters/config.py`, which is the source of truth.
 
 The app logs to stderr under the `planner.*` loggers, as JSON lines by default. Every line has
 `ts`, `level`, `logger` and `event`; lines inside a turn also carry `turn_id` and `session`. Events
-cover each graph step and its timing, tool checks (tool, accepted, issue codes), confirmations,
-backend calls (backend, host, model, tokens, duration), limit hits and errors with stack traces.
+cover tool checks (tool, accepted, issue codes), confirmations, backend calls (backend, host, model,
+tokens, duration), limit hits and errors with stack traces. Each graph step and its timing is
+logged at `DEBUG` only.
 
 Privacy rules: API keys are never logged (known keys are scrubbed from every line, in any
 spelling). User message text and tool arguments appear only at `DEBUG`, so keep `DEBUG` off on a
-public deployment. For a custom endpoint only the host and model are logged, not the full URL.
+public deployment. For a custom endpoint only the host and model are logged, not the full URL, and
+a rejected endpoint is logged without its host. Below `DEBUG` an error's stack is logged but not its
+message, which can quote what the user typed.
 
 ## How it works
 
