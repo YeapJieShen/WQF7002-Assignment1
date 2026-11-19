@@ -225,3 +225,7 @@ evals/results/
 # Report sources, screenshots and evidence are kept locally; the final PDF is added later in its own PR.
 docs/report/
 scripts/build_report.py
+
+# Agent working folders
+.agency/
+.readout/
