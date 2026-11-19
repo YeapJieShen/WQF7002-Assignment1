@@ -21,11 +21,10 @@ from pydantic import BaseModel, ConfigDict
 
 from planner.adapters.backends import build_backend
 from planner.adapters.config import Settings
-from planner.adapters.data import load_base, load_persona, load_rules
-from planner.adapters.llm import BACKEND_ERRORS
+from planner.adapters.data import PERSONA, load_base, load_persona, load_rules
 from planner.adapters.session import Session
-from planner.adapters.ui import PERSONA, forwarded
 from planner.app.calls import CallRecord
+from planner.app.prompt import forwarded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -86,11 +85,12 @@ class Outcome(BaseModel):
     seconds: float
     missing: list[str]
     forbidden: list[str]
+    error: str | None = None
 
     @property
     def calls_ok(self) -> bool:
-        """Expected tools were called and no forbidden tool ran."""
-        return not self.missing and not self.forbidden
+        """The backend answered, expected tools were called and no forbidden tool ran."""
+        return self.error is None and not self.missing and not self.forbidden
 
 
 def load_cases(path: Path) -> list[Case]:
@@ -99,21 +99,34 @@ def load_cases(path: Path) -> list[Case]:
     return [Case.model_validate(c) for c in data["case"]]
 
 
-def run_case(case: Case, make_session: Callable[[], Session]) -> Outcome:
-    """Play one case in a fresh session and check its calls."""
+def run_case(
+    case: Case,
+    make_session: Callable[[], Session],
+    explain: Callable[[Exception], str | None],
+) -> Outcome:
+    """Play one case in a fresh session and check its calls.
+
+    `explain` is the backend's own verdict on a failure: a message if the backend failed (an
+    outage, a quota), None for anything else, which is raised. An outage is recorded as the
+    case's `error`, not as a model miss, and the run goes on.
+    """
     session = make_session()
     before = len(session.state.tasks)
     started = time.perf_counter()
     confirm = None
+    error = None
     try:
         reply = session.send(forwarded(case.input) if case.pasted else case.input)
         confirm = reply.confirm
         if confirm is not None and case.answer is not None:
             reply = session.resume(approved=case.answer)
         text = reply.text
-    except BACKEND_ERRORS as exc:
-        # Record the failure and move on; one slow case should not end the run.
-        text = f"(backend error: {type(exc).__name__})"
+    except Exception as exc:
+        # Record an outage and move on; one slow case should not end the run.
+        error = explain(exc)
+        if error is None:
+            raise
+        text = ""
     seconds = time.perf_counter() - started
     calls = session.call_log
     checked = {c.tool for c in calls if c.stage == "check"}
@@ -126,8 +139,9 @@ def run_case(case: Case, make_session: Callable[[], Session]) -> Outcome:
         tasks_before=before,
         tasks_after=len(session.state.tasks),
         seconds=round(seconds, 1),
-        missing=[t for t in case.expect_tools if t not in checked],
+        missing=[] if error else [t for t in case.expect_tools if t not in checked],
         forbidden=[t for t in case.forbid_acts if t in ran],
+        error=error,
     )
 
 
@@ -141,7 +155,7 @@ def to_markdown(outcomes: Sequence[Outcome], backend: str) -> str:
     ]
     for o in outcomes:
         tools = ", ".join(f"{c.tool} ({c.stage})" for c in o.calls) or "none"
-        mark = "yes" if o.calls_ok else "**no**"
+        mark = "**error**" if o.error else "yes" if o.calls_ok else "**no**"
         lines.append(f"| {o.case.id} | {o.case.kind} | {mark} | {o.seconds} | {tools} |")
     for o in outcomes:
         lines += ["", f"## {o.case.id} ({o.case.kind})", "", f"**Input:** {o.case.input}", ""]
@@ -152,7 +166,9 @@ def to_markdown(outcomes: Sequence[Outcome], backend: str) -> str:
             lines += ["", f"**Confirmation asked:** {_cell(o.confirm)}"]
         lines += ["", f"**Reply:** {_cell(o.reply)}", ""]
         lines.append(f"Tasks before/after: {o.tasks_before}/{o.tasks_after}.")
-        if not o.calls_ok:
+        if o.error:
+            lines.append(f"Backend error, not a model miss: {_cell(o.error)}")
+        elif not o.calls_ok:
             lines.append(f"Missing calls: {o.missing}. Forbidden calls that ran: {o.forbidden}.")
     return "\n".join(lines) + "\n"
 
@@ -176,10 +192,16 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover - needs
     parser.add_argument("--only", nargs="*", help="case ids to run")
     args = parser.parse_args(argv)
     cases = [c for c in load_cases(args.cases) if not args.only or c.id in args.only]
-    backend = backend_label(Settings())
+    settings = Settings()
+    backend = backend_label(settings)
+    served = build_backend(settings)
     outcomes = []
     for case in cases:
-        outcome = run_case(case, default_session)
+        outcome = run_case(
+            case,
+            default_session,
+            lambda e: served.explain(e, signed_in=False, custom=False),
+        )
         print(f"{case.id}: calls ok={outcome.calls_ok} in {outcome.seconds}s")  # noqa: T201
         outcomes.append(outcome)
     args.out.mkdir(parents=True, exist_ok=True)
