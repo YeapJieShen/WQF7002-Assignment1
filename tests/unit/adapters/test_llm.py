@@ -38,7 +38,7 @@ def test_build_model_makes_one_client_per_endpoint() -> None:
         )
     )
     assert not hasattr(one, "fallbacks")
-    assert len(two.fallbacks) == 1  # type: ignore[attr-defined]
+    assert len(two.fallbacks) == 1  # type: ignore[attr-defined]  # only the multi-endpoint model has fallbacks
 
 
 def test_a_single_model_is_used_as_is() -> None:
@@ -71,6 +71,6 @@ def test_other_errors_are_not_hidden_by_a_fallback() -> None:
 
 
 def test_a_client_lets_the_model_choose_one_tool_or_none() -> None:
-    bound = client(LOCAL_GPU).kwargs  # type: ignore[attr-defined]
+    bound = client(LOCAL_GPU).kwargs  # type: ignore[attr-defined]  # kwargs is set on the fake client, not in the real type
     assert bound["tool_choice"] == "auto"
     assert bound["parallel_tool_calls"] is False

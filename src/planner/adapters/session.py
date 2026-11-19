@@ -118,7 +118,7 @@ class Session:
         """The session as the agent's tools have left it."""
         if self._start is not None:
             return self._start
-        return self._graph.get_state(self._config).values["session"]  # type: ignore[no-any-return]
+        return self._graph.get_state(self._config).values["session"]  # type: ignore[no-any-return]  # LangGraph types values as Any
 
     @property
     def call_log(self) -> list[CallRecord]:

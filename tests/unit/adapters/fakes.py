@@ -53,5 +53,5 @@ class FakeBackend:
         self.explained.append((signed_in, custom))
         return "Out of quota." if isinstance(error, Boom) else None
 
-    def cost(self, usage: Usage, custom: Endpoint | None, /) -> str | None:  # noqa: ARG002
+    def cost(self, usage: Usage, custom: Endpoint | None, /) -> str | None:  # noqa: ARG002 - protocol; the fake prices every endpoint alike
         return self.price

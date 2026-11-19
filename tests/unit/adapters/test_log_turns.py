@@ -148,7 +148,7 @@ def test_an_unexpected_failure_is_logged_with_its_stack_and_raised(
         talk(ctl, ctl.boot()[0], "hi")
     [failed] = [r for r in caplog.records if r.getMessage() == "turn_error"]
     assert failed.exc_info is not None
-    assert failed.fields["error_class"] == "ValueError"  # type: ignore[attr-defined]
+    assert failed.fields["error_class"] == "ValueError"  # type: ignore[attr-defined]  # fields is set by the logging adapter, not on LogRecord
     assert [f["outcome"] for f in fields(caplog, "turn_end")] == ["error"]
 
 

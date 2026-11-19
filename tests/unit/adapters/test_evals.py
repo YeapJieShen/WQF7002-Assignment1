@@ -114,7 +114,7 @@ def test_a_backend_error_is_recorded_not_raised(state: SessionState, base: BaseD
     case = Case(id="t", kind="normal", input="hi", expect_tools=("plan_day",), expected="?")
     outcome = run_case(
         case,
-        lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]
+        lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]  # DownModel is a stand-in, not a full Model
         lambda _: "backend is down",
     )
     assert outcome.error == "backend is down"
@@ -131,7 +131,7 @@ def test_a_failure_the_backend_does_not_explain_is_raised(
     with pytest.raises(openai.APITimeoutError):
         run_case(
             case,
-            lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]
+            lambda: session_of(DownModel(), state, base),  # type: ignore[arg-type]  # DownModel is a stand-in, not a full Model
             lambda _: None,
         )
 

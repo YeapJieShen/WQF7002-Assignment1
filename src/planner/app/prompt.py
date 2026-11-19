@@ -1,8 +1,10 @@
 """The session snapshot the model reads before each reply.
 
-The fixed rules live in `resources/rules.md` and form the first message, which never changes,
-so the backend can reuse its cached prefix. This snapshot changes with every edit or tick of
-the clock, so it goes last, after the conversation, to keep that prefix intact.
+The fixed rules live in `resources/rules.md`. The graph sends them as a system message ahead of
+every model call and never stores them in the history, so they are an unchanging prefix the
+backend can cache. This snapshot changes with every edit or tick of the clock, so the graph
+rebuilds it on each call and sends it as a human message after the conversation, which keeps
+that prefix intact.
 """
 
 from __future__ import annotations

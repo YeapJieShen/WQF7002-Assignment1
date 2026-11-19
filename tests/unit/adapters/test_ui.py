@@ -156,7 +156,7 @@ def test_a_backend_failure_is_explained_and_knows_whether_the_visitor_is_signed_
     tab = boot(ctl)
     assert chat(ctl, tab, "hi")[-1][0][-1]["content"] == "Out of quota."
     chat(ctl, tab, "again", profile=object())
-    assert ctl.backend.explained == [(False, False), (True, False)]  # type: ignore[attr-defined]
+    assert ctl.backend.explained == [(False, False), (True, False)]  # type: ignore[attr-defined]  # the fake backend records calls; the protocol omits explained
 
 
 def test_a_pasted_message_is_labelled_and_fenced() -> None:

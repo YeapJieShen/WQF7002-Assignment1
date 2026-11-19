@@ -86,7 +86,7 @@ def test_a_confirmation_pauses_then_the_answer_finishes_it(
             tab,
             backend,
             [],
-            lambda: tab.session.resume_stream(True),  # noqa: FBT003
+            lambda: tab.session.resume_stream(approved=True),
             said="(confirmed)",
             signed_in=False,
         )
@@ -130,10 +130,10 @@ def test_switching_endpoint_changes_the_model_mid_conversation(
 
 
 def test_releasing_an_endpoint_stops_scrubbing_its_key_only_when_unused() -> None:
-    from pydantic import SecretStr  # noqa: PLC0415
+    from pydantic import SecretStr  # noqa: PLC0415 - only this test needs it
 
-    from planner.adapters import logs  # noqa: PLC0415
-    from planner.adapters.chat import release_endpoint  # noqa: PLC0415
+    from planner.adapters import logs  # noqa: PLC0415 - only this test needs the logs module
+    from planner.adapters.chat import release_endpoint  # noqa: PLC0415 - only this test needs it
 
     mine = Endpoint(
         name="c", base_url="https://x.test/v1", model="m", api_key=SecretStr("sk-release-me-123")

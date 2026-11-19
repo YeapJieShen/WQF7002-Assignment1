@@ -268,7 +268,7 @@ class FrozenDict[K, V](dict[K, V]):
 
     __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = __ior__ = _blocked
 
-    def __hash__(self) -> int:  # type: ignore[override]
+    def __hash__(self) -> int:  # type: ignore[override]  # dict sets __hash__ to None; this read-only dict opts back in
         """Hash by content, like a frozenset of the items."""
         return hash(frozenset(self.items()))
 

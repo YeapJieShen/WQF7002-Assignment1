@@ -76,7 +76,7 @@ def test_exceptions_are_logged_with_the_stack() -> None:
     out = io.StringIO()
     logs.configure_logging("INFO", "json", out)
     try:
-        raise ValueError("boom")  # noqa: TRY301
+        raise ValueError("boom")  # noqa: TRY301 - the raise is what the test logs
     except ValueError as exc:
         logs.emit(LOG, "failed", level=logging.ERROR, exc_info=exc)
     assert "ValueError: boom" in str(lines(out)[0]["exc"])
@@ -88,7 +88,7 @@ def test_registered_secrets_are_scrubbed_from_both_formats_and_stacks() -> None:
         out = io.StringIO()
         logs.configure_logging("INFO", fmt, out)
         try:
-            raise ValueError("bad sk-supersecret")  # noqa: TRY301
+            raise ValueError("bad sk-supersecret")  # noqa: TRY301 - the raise is what the test logs
         except ValueError as exc:
             logs.emit(LOG, "failed", level=logging.ERROR, exc_info=exc, detail="sk-supersecret")
         assert "sk-supersecret" not in out.getvalue()
@@ -123,7 +123,7 @@ def test_session_hash_is_stable_and_not_the_id() -> None:
 
 
 def test_settings_level_is_case_insensitive_and_defaults_are_documented() -> None:
-    assert Settings(log_level="debug").log_level == "DEBUG"  # type: ignore[arg-type]
+    assert Settings(log_level="debug").log_level == "DEBUG"  # type: ignore[arg-type]  # a lowercase level, which the Literal type rejects on purpose
     assert (Settings().log_level, Settings().log_format) == ("INFO", "json")
 
 
@@ -141,10 +141,10 @@ AWKWARD_KEYS = [r'sk-A"B\C-é9', "sk-plain-0123456789", "sk-sp ace&x=1/é"]
 def test_awkward_keys_are_scrubbed_in_every_spelling(key: str, fmt: str) -> None:
     logs.register_secret(key)
     out = io.StringIO()
-    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]
+    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]  # fmt is a parametrised str; the Literal type is checked elsewhere
     spellings = [key, quote(key, safe=""), quote_plus(key), json.dumps(key)]
     try:
-        raise ValueError("; ".join(spellings))  # noqa: TRY301
+        raise ValueError("; ".join(spellings))  # noqa: TRY301 - the raise is what the test logs
     except ValueError as exc:
         logs.emit(
             LOG, f"event {key}", level=logging.ERROR, exc_info=exc,
@@ -163,7 +163,7 @@ def test_a_key_logged_lowercased_inside_a_host_is_scrubbed(fmt: str) -> None:
     # URL parsing lowercases hostnames, so the logged host is not the registered spelling.
     logs.register_secret("sk-AUDITKEY123")
     out = io.StringIO()
-    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]
+    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]  # fmt is a parametrised str; the Literal type is checked elsewhere
     logs.emit(LOG, "endpoint_rejected", host="sk-auditkey123.evil.example.com")
     assert "sk-auditkey123" not in out.getvalue().lower()
     assert logs.REDACTED in out.getvalue()

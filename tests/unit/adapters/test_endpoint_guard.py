@@ -196,7 +196,7 @@ def test_a_long_provider_error_is_cut_and_the_key_stays_out() -> None:
         )
 
     with pytest.raises(ProviderError) as caught:
-        _Redacting(RunnableLambda(boom), KEY, 30, 300).invoke([])  # type: ignore[arg-type]
+        _Redacting(RunnableLambda(boom), KEY, 30, 300).invoke([])  # type: ignore[arg-type]  # a bare RunnableLambda stands in for the chat model
     text = str(caught.value)
     assert len(text) == 303
     assert text.endswith("...")
@@ -261,6 +261,6 @@ def test_the_async_client_refuses_a_name_that_turned_private(
 
 def test_a_custom_endpoint_model_gets_both_guarded_clients() -> None:
     model = backend().model(endpoint("https://api.example.com/v1"))
-    chat = model.chat.bound  # type: ignore[attr-defined]
+    chat = model.chat.bound  # type: ignore[attr-defined]  # the wrapped client, which the Runnable type omits
     assert isinstance(chat.root_client._client._transport, httpx2.HTTPTransport)
     assert type(chat.root_async_client._client._transport).__name__ == "_VettingAsyncTransport"
