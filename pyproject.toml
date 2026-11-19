@@ -12,6 +12,7 @@ dependencies = [
     "langgraph",
     "langchain-core",
     "langchain-openai",
+    "pandas>=3.1",
     "pydantic>=2",
     "pydantic-settings",
 ]
@@ -24,6 +25,7 @@ dev = [
     "hypothesis",
     "import-linter",
     "mypy",
+    "pandas-stubs==3.1.0.261029",
     "pytest",
     "pytest-cov",
     "ruff",
