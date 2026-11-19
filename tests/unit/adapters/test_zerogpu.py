@@ -322,3 +322,18 @@ def test_prefix_cache_is_skipped_when_the_tokens_do_not_start_with_the_turn() ->
     # Cached head: the same text, but tokens that do not match the cached ones.
     assert cache.lookup(f"rules{END}x", ids(f"rules{END}x")) is not None
     assert cache.lookup(f"rules{END}x", ids("other text entirely")) is None
+
+
+def test_cache_options_off_prefills_everything() -> None:
+    """With the setting off there is no PrefixCache: generate gets no cache, as before."""
+    assert zerogpu.cache_options(None, f"rules{END}q", ids(f"rules{END}q")) == {}
+
+
+def test_cache_options_on_passes_the_cached_first_turn() -> None:
+    cache = prefix_cache([])
+    options = zerogpu.cache_options(cache, f"rules{END}q", ids(f"rules{END}q"))
+    assert options == {"past_key_values": list(f"rules{END}")}
+
+
+def test_cache_options_on_falls_back_when_the_prompt_has_no_first_turn() -> None:
+    assert zerogpu.cache_options(prefix_cache([]), "no marker", ids("no marker")) == {}
