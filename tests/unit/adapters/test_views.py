@@ -7,12 +7,14 @@ from planner.adapters.views import (
     EXAMPLES_SHOWN,
     SAMPLE_DAYS,
     SAMPLE_MIN,
+    THINKING_WORDS,
     call_message,
     examples,
     pace_chart,
     place_label,
     place_rows,
     task_rows,
+    thinking,
     travel_rows,
 )
 from planner.app.calls import CallRecord
@@ -75,6 +77,14 @@ def test_the_row_body_lists_every_stage_and_the_title_names_the_tool() -> None:
     assert "- check: accepted" in message["content"]
     assert "- act: Deleted T4." in message["content"]
     assert "✅" not in message["metadata"]["title"]
+
+
+def test_the_pending_line_rotates_its_text_and_names_a_running_tool() -> None:
+    first, second = thinking(0), thinking(1)
+    assert first["content"] != second["content"]
+    assert thinking(len(THINKING_WORDS))["content"] == first["content"]
+    assert thinking(5, "add_task")["content"].endswith("Running add_task…")
+    assert "metadata" not in first  # plain reply text, not a collapsible box nested in the bubble
 
 
 def test_examples_are_three_and_match_the_loaded_data(state: SessionState, base: BaseData) -> None:
