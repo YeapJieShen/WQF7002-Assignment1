@@ -5,7 +5,7 @@ gradio[oauth]==6.31.0
 langgraph==1.2.18
 langchain-core==1.7.0
 langchain-openai==1.7.3
-pydantic==2.14.1
+pydantic==2.12.5
 pydantic-settings==2.16.1
 plotly==7.1.0
 # torch matches the build preinstalled on the ZeroGPU Space (2.13.0), so pip does not replace it.
