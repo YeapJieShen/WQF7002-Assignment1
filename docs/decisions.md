@@ -84,7 +84,9 @@ Short records of choices that are not obvious from the code: context, decision, 
 ## Logging privacy
 - Context: logs are kept by the host and others may read them.
 - Decision: structured JSON lines; keys are never logged and are scrubbed from every line; user
-  text and tool arguments only at `DEBUG`; a custom endpoint is logged as host and model only.
+  text and tool arguments only at `DEBUG`; a custom endpoint is logged as host and model only (a
+  rejected one without its host, since a key pasted into the URL box would be the host); an
+  exception's message, which can quote user input, only at `DEBUG` (below it: stack and class).
 - Consequence: the default `INFO` is safe for the Space; `DEBUG` is for local diagnosis.
 
 ## Monotonic task ids
