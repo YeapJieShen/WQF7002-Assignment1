@@ -147,6 +147,15 @@ def usage_line(seconds: float, usage: Usage | None) -> str:
     return " · ".join(parts)
 
 
+def usage_footer(seconds: float, usage: Usage | None) -> str:
+    """The turn's usage as the footer of a reply, for the page to show under the copy icon.
+
+    Gradio 6.31 has no per-message footer, so the reply carries this span and a few lines of
+    CSS (`.turn-usage` in `ui.CSS`) place it under the message's copy button.
+    """
+    return f'<span class="turn-usage">{usage_line(seconds, usage)}</span>'
+
+
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:
     """Pick a few example messages that make sense for this session's tasks and places."""
     here = base.place(state.location)

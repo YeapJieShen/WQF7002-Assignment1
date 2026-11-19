@@ -37,7 +37,6 @@ from planner.adapters.views import (
     places_figure,
     task_rows,
     travel_rows,
-    usage_line,
 )
 from planner.app.prompt import forwarded
 from planner.domain.models import Minutes, Pace, SessionState, Weekday
@@ -132,7 +131,10 @@ CSS: Final = """
   mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
   border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.usage { text-align: right; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+.message-row:has(.turn-usage) { position: relative; margin-bottom: 1.6rem; }
+.message-row:has(.turn-usage) + .message-buttons { margin-bottom: 2.2rem; }
+.turn-usage { position: absolute; left: 0; top: calc(100% + 4.5rem); white-space: nowrap;
+  color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
 .confirm-card { border-color: var(--color-orange-500) !important; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
@@ -257,7 +259,6 @@ class Controller:
             place_label(self.base, state.location),
             gr.update(visible=False),
             "",
-            "",
             *pace_values(state.pace),
             self.pace_chart(state),
         )
@@ -267,7 +268,7 @@ class Controller:
         return pace_figure(state, self.base, THEME.primary_500)
 
     def refresh(self, tab: Tab | None) -> tuple[Any, ...]:
-        """What changes after a turn: the box, the tables, the location, the card, the usage."""
+        """What changes after a turn: the box, the tables, the location and the card."""
         live = _live(tab)
         state = live.session.state
         asking = live.pending is not None
@@ -277,7 +278,6 @@ class Controller:
             place_label(self.base, state.location),
             gr.update(visible=asking),
             live.pending or "",
-            usage_line(live.turns[-1].seconds, live.turns[-1].usage) if live.turns else "",
         )
 
     # Starting a tab.
@@ -564,7 +564,6 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         with gr.Tabs():
             with gr.Tab("Chat"):
                 chatbot = gr.Chatbot(show_label=False, height="60vh", layout="bubble")
-                usage = gr.Markdown(elem_classes="usage")
                 with gr.Group(visible=False, elem_classes="confirm-card") as card:
                     question = gr.Markdown()
                     with gr.Row():
@@ -663,8 +662,8 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             gr.LoginButton()
 
         pace: list[Any] = [daily, consecutive, long_break, distribution, hardest, *per_day]
-        reset = [tab, chatbot, box, tasks, chip, card, question, usage, *pace, chart]
-        after = [box, tasks, chip, card, question, usage]
+        reset = [tab, chatbot, box, tasks, chip, card, question, *pace, chart]
+        after = [box, tasks, chip, card, question]
         sent = [box, chatbot, tab]
 
         app.load(ctl.boot, None, reset, api_visibility="private")
