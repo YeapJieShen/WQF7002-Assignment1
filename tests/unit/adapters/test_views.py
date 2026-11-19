@@ -12,6 +12,7 @@ from planner.adapters.views import (
     SAMPLE_DAYS,
     SAMPLE_MIN,
     THINKING_WORDS,
+    USAGE_HINT,
     call_message,
     edge_labels,
     examples,
@@ -101,12 +102,16 @@ def test_the_pending_line_rotates_its_text_and_names_a_running_tool() -> None:
 def test_the_usage_line_gives_seconds_and_tokens() -> None:
     assert usage_line(3.24, Usage(1234, 56)) == "1,234 In / 56 Out Tokens · 3.2 s"
     assert usage_line(0.04, None) == "0.0 s"
+    assert (
+        usage_line(4.5, Usage(4765, 22, cached_tokens=3600))
+        == "4,765 In (3,600 Cached) / 22 Out Tokens · 4.5 s"
+    )
 
 
 def test_the_usage_footer_wraps_the_line_for_the_page_to_place() -> None:
     assert (
         usage_footer(3.24, Usage(1, 2))
-        == '<span class="turn-usage">1 In / 2 Out Tokens · 3.2 s</span>'
+        == f'<span class="turn-usage" title="{USAGE_HINT}">1 In / 2 Out Tokens · 3.2 s</span>'
     )
 
 
