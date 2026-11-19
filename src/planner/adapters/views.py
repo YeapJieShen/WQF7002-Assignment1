@@ -5,6 +5,7 @@ Pure functions with no Gradio state, so tests check them directly.
 
 from __future__ import annotations
 
+import html
 import itertools
 import math
 from dataclasses import dataclass
@@ -38,6 +39,17 @@ EXAMPLES_SHOWN: Final = 3
 FILL_ALPHA: Final = 0.3
 """How opaque the area under the Pace curve is."""
 EDGE_ALPHA: Final = 0.35
+HOVER_LABEL: Final = {
+    "bgcolor": "#ffffff",
+    "bordercolor": "#e5e7eb",
+    "font": {
+        "family": "Source Sans Pro, ui-sans-serif, system-ui, sans-serif",
+        "size": 13,
+        "color": "#1f2937",
+    },
+    "align": "left",
+}
+"""The Places graph's hover box: neutral and light, in the theme's font, not trace-coloured."""
 """How opaque the edges of the Places graph are."""
 NODE_SIZE: Final = 32
 """The diameter of a place on the Places graph, in pixels."""
@@ -248,9 +260,8 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
         ]
     )
     figure.update_layout(
-        title="Planned minutes per day for a sample 10-hour task",
         showlegend=False,
-        margin={"l": 50, "r": 50, "t": 50, "b": 40},
+        margin={"l": 50, "r": 50, "t": 20, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis={
@@ -314,25 +325,30 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
     angle = {p.id: 2 * math.pi * i / len(base.places) for i, p in enumerate(base.places)}
     at = {pid: (math.cos(a), math.sin(a)) for pid, a in angle.items()}
     name = {p.id: p.name for p in base.places}
-    legs: dict[tuple[str, str], list[str]] = {}
+    legs: dict[tuple[str, str], list[tuple[str, int]]] = {}
     for leg in base.travel:
         pair = (min(leg.origin, leg.destination), max(leg.origin, leg.destination))
-        text = f"{leg.mode.value} {leg.minutes} min"
-        if text not in legs.setdefault(pair, []):
-            legs[pair].append(text)
+        option = (leg.mode.value, leg.minutes)
+        if option not in legs.setdefault(pair, []):
+            legs[pair].append(option)
     lines_x: list[float | None] = []
     lines_y: list[float | None] = []
     for a, b in legs:
         lines_x += [at[a][0], at[b][0], None]
         lines_y += [at[a][1], at[b][1], None]
     middles = [((at[a][0] + at[b][0]) / 2, (at[a][1] + at[b][1]) / 2) for a, b in legs]
-    edge_hover = [f"{name[a]} - {name[b]}<br>{', '.join(t)}" for (a, b), t in legs.items()]
+    edge_hover = [
+        _hover(f"{name[a]} to {name[b]}", [f"{m} {n} min" for m, n in options])
+        for (a, b), options in legs.items()
+    ]
     node_hover = [
-        f"<b>{p.name}</b><br>"
-        + "<br>".join(
-            f"{name[b if a == p.id else a]}: {', '.join(t)}"
-            for (a, b), t in legs.items()
-            if p.id in (a, b)
+        _hover(
+            p.name,
+            [
+                f"{name[b if a == p.id else a]}: " + ", ".join(f"{m} {n} min" for m, n in options)
+                for (a, b), options in legs.items()
+                if p.id in (a, b)
+            ],
         )
         for p in base.places
     ]
@@ -349,10 +365,13 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
             go.Scatter(
                 x=[m[0] for m in middles],
                 y=[m[1] for m in middles],
-                mode="markers",
-                marker={"size": 10, "color": color, "opacity": 0},
-                hovertext=edge_hover,
-                hoverinfo="text",
+                mode="markers+text",
+                text=edge_labels(base),
+                textposition="top center",
+                textfont={"size": 11},
+                marker={"size": 16, "color": color, "opacity": 0},
+                hovertemplate=edge_hover,
+                hoverlabel=HOVER_LABEL,
             ),
             go.Scatter(
                 x=[at[p.id][0] for p in base.places],
@@ -362,8 +381,8 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
                 textposition="top center",
                 textfont={"size": 14},
                 marker={"size": NODE_SIZE, "color": color},
-                hovertext=node_hover,
-                hoverinfo="text",
+                hovertemplate=node_hover,
+                hoverlabel=HOVER_LABEL,
             ),
         ]
     )
@@ -379,6 +398,22 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
         height=520,
     )
     return figure
+
+
+def _hover(title: str, lines: Sequence[str]) -> str:
+    """A hover box body: a bold title, one line per item and no trace name."""
+    return (
+        "<br>".join([f"<b>{html.escape(title)}</b>", *map(html.escape, lines)]) + "<extra></extra>"
+    )
+
+
+def edge_labels(base: BaseData) -> list[str]:
+    """The always-visible label for each edge of the Places graph: its fastest travel time."""
+    fastest: dict[tuple[str, str], int] = {}
+    for leg in base.travel:
+        pair = (min(leg.origin, leg.destination), max(leg.origin, leg.destination))
+        fastest[pair] = min(leg.minutes, fastest.get(pair, leg.minutes))
+    return [f"{minutes} min" for minutes in fastest.values()]
 
 
 def _drivable(base: BaseData, state: SessionState, place: Place) -> bool:
