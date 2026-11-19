@@ -90,7 +90,8 @@ class AppBackend:
                 "endpoint_rejected",
                 level=logging.WARNING,
                 reason=exc.code,
-                **loggable(custom.base_url),
+                # Not the host: a key pasted into the URL box would be logged as the host.
+                scheme=loggable(custom.base_url)["scheme"],
             )
             raise
         register_secret(custom.api_key.get_secret_value())  # so no log line can ever carry it

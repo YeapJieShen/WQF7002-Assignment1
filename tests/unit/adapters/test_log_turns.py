@@ -365,3 +365,12 @@ def test_the_start_up_summary_has_no_keys(caplog: pytest.LogCaptureFixture) -> N
     logs.emit(logging.getLogger("planner.app"), "app_start", **summary)
     assert KEY not in everything(caplog)
     assert fields(caplog, "app_start")[0]["llm_endpoints"][0]["host"] == "h.example"
+
+
+def test_a_key_pasted_into_the_url_box_is_not_logged_as_the_host(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    backend = AppBackend(ScriptedModel(), zerogpu=False, allow_private=False, error_max_chars=300)
+    with pytest.raises(BlockedEndpointError):
+        backend.model(Endpoint(name="c", base_url=f"https://{KEY}", model="m"))
+    assert KEY.lower() not in everything(caplog).lower()
