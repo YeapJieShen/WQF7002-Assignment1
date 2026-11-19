@@ -29,19 +29,19 @@ from planner.app.prompt import forwarded
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from planner.adapters.backends import AppBackend
     from planner.domain.models import SessionState
 
 
-def default_session(state: SessionState | None = None) -> Session:
-    """Start a conversation with the configured model, from `state` or the sample persona."""
+def default_session(backend: AppBackend, state: SessionState | None = None) -> Session:
+    """Start a conversation on `backend`'s default model, from `state` or the sample persona."""
     start = state or load_persona(PERSONA)
-    settings = Settings()
     return Session(
-        build_backend(settings).model(None),
+        backend.model(None),
         load_base(),
         load_rules(),
         start,
-        max_rejections=settings.max_rejections,
+        max_rejections=Settings().max_rejections,
     )
 
 
@@ -199,7 +199,7 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover - needs
     for case in cases:
         outcome = run_case(
             case,
-            default_session,
+            lambda: default_session(served),
             lambda e: served.explain(e, signed_in=False, custom=False),
         )
         print(f"{case.id}: calls ok={outcome.calls_ok} in {outcome.seconds}s")  # noqa: T201
