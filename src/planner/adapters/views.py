@@ -5,6 +5,7 @@ Pure functions with no Gradio state, so tests check them directly.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -14,6 +15,7 @@ from planner.app import scheduler
 from planner.domain.models import Mode, Task, TaskStatus, TaskType, Weekday
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from random import Random
 
     from planner.app.calls import CallRecord
@@ -67,22 +69,44 @@ def place_label(base: BaseData, place_id: str) -> str:
     return f"📍 {place.name if place else place_id}"
 
 
-def stage_message(record: CallRecord) -> Message:
-    """Show one stage of a tool call as a collapsed row in the chat.
+def call_message(records: Sequence[CallRecord], *, waiting: bool = False) -> Message:
+    """Show one tool call as a single row that grows as the call passes each stage.
 
-    The title says the tool, the stage and its verdict; a rejection's reason shows beside it.
+    Args:
+        records: Every stage the call has passed so far, oldest first.
+        waiting: Whether the call is parked on the user's yes or no.
+
+    Returns:
+        A chat row: a pending spinner until the call ends, a badge for its state in the title,
+        and one line per stage in the expandable body.
     """
-    verdict, _, reason = record.outcome.partition(": ")
-    refused = record.outcome.startswith(_REFUSED)
-    if record.stage == "act":
-        verdict, reason = "done", ""
-    icon = "❌" if refused else "✅"
-    metadata: dict[str, str] = {"title": f"{icon} {record.tool} · {record.stage}: {verdict}"}
-    if reason:
-        metadata["log"] = reason
-    metadata["status"] = "done"
-    content = f"`{record.tool}` `{record.args}`\n\n```text\n{record.outcome}\n```"
+    last = records[-1]
+    state, final = _call_state(last, waiting=waiting)
+    title = f'{last.tool} <span class="badge {state.css}">{state.text}</span>'
+    metadata: dict[str, str] = {"title": title, "status": "done" if final else "pending"}
+    lines = "\n".join(f"- {r.stage}: {r.outcome}" for r in records)
+    content = f"`{last.tool}` `{last.args}`\n\n{lines}"
     return {"role": "assistant", "content": content, "metadata": metadata}
+
+
+@dataclass(frozen=True)
+class _CallState:
+    text: str
+    css: str
+
+
+def _call_state(last: CallRecord, *, waiting: bool) -> tuple[_CallState, bool]:
+    """Name the state a call is in after `last`, and say whether the call is over."""
+    if last.stage == "act":
+        return _CallState("done", "ok"), True
+    if last.outcome.startswith(_REFUSED):
+        word = "declined" if last.outcome.startswith("declined") else "rejected"
+        return _CallState(word, "bad"), True
+    if waiting:
+        return _CallState("waiting for you", "wait"), False
+    if last.stage == "check":
+        return _CallState("checked", "run"), False
+    return _CallState("running", "run"), False
 
 
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:

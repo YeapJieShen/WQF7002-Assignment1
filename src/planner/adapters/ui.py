@@ -114,6 +114,12 @@ CSS: Final = """
 .chip p { margin: 0; }
 .header { flex-wrap: wrap; }
 .header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
+.badge { float: right; border-radius: var(--radius-sm); padding: 0 var(--spacing-md);
+  color: white; font-size: var(--text-sm); }
+.badge.ok { background: var(--color-green-500); }
+.badge.bad { background: var(--color-red-500); }
+.badge.wait { background: var(--color-orange-500); }
+.badge.run { background: var(--color-blue-500); }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """

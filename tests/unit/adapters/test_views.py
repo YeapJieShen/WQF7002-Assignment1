@@ -1,15 +1,17 @@
 import random
+import re
 from datetime import datetime
+from typing import Any
 
 from planner.adapters.views import (
     EXAMPLES_SHOWN,
     SAMPLE_DAYS,
     SAMPLE_MIN,
+    call_message,
     examples,
     pace_chart,
     place_label,
     place_rows,
-    stage_message,
     task_rows,
     travel_rows,
 )
@@ -35,25 +37,44 @@ def test_the_location_chip_names_the_place_or_falls_back_to_its_id(base: BaseDat
     assert place_label(base, "mars") == "📍 mars"
 
 
-def test_a_rejected_check_shows_its_reason_beside_a_cross() -> None:
-    record = CallRecord(
-        stage="check", tool="set_location", args="{}", outcome="rejected: unknown place"
-    )
-    message = stage_message(record)
-    assert message["metadata"]["title"] == "❌ set_location · check: rejected"
-    assert message["metadata"]["log"] == "unknown place"
-    assert message["metadata"]["status"] == "done"
+def record(stage: str, outcome: str, tool: str = "delete_task") -> CallRecord:
+    return CallRecord(stage=stage, tool=tool, args="{}", outcome=outcome)  # type: ignore[arg-type]  # stage is a plain str; CallRecord takes a Literal
 
 
-def test_accepted_declined_and_done_stages_read_plainly() -> None:
-    def title(stage: str, outcome: str) -> str:
-        record = CallRecord(stage=stage, tool="delete_task", args="{}", outcome=outcome)  # type: ignore[arg-type]  # stage and outcome are plain strs; CallRecord takes Literals
-        return str(stage_message(record)["metadata"]["title"])
+def badge(message: dict[str, Any]) -> tuple[str, str]:
+    """The state class and text of a call row's badge."""
+    found = re.search(r'badge (\w+)">([^<]+)<', message["metadata"]["title"])
+    assert found
+    return found.group(1), found.group(2)
 
-    assert title("check", "accepted") == "✅ delete_task · check: accepted"
-    assert title("confirm", "declined") == "❌ delete_task · confirm: declined"
-    assert title("confirm", "approved") == "✅ delete_task · confirm: approved"
-    assert title("act", "Deleted T4.") == "✅ delete_task · act: done"
+
+def test_a_call_is_one_row_that_moves_through_its_states() -> None:
+    check = record("check", "accepted")
+    assert badge(call_message([check])) == ("run", "checked")
+    assert call_message([check])["metadata"]["status"] == "pending"
+    waiting = call_message([check], waiting=True)
+    assert badge(waiting) == ("wait", "waiting for you")
+    assert waiting["metadata"]["status"] == "pending"
+    approved = record("confirm", "approved")
+    assert badge(call_message([check, approved])) == ("run", "running")
+    done = call_message([check, approved, record("act", "Deleted T4.")])
+    assert badge(done) == ("ok", "done")
+    assert done["metadata"]["status"] == "done"
+
+
+def test_a_refused_call_ends_as_rejected_or_declined() -> None:
+    assert badge(call_message([record("check", "rejected: unknown place")])) == ("bad", "rejected")
+    declined = call_message([record("check", "accepted"), record("confirm", "declined")])
+    assert badge(declined) == ("bad", "declined")
+    assert declined["metadata"]["status"] == "done"
+
+
+def test_the_row_body_lists_every_stage_and_the_title_names_the_tool() -> None:
+    message = call_message([record("check", "accepted"), record("act", "Deleted T4.")])
+    assert message["metadata"]["title"].startswith("delete_task ")
+    assert "- check: accepted" in message["content"]
+    assert "- act: Deleted T4." in message["content"]
+    assert "✅" not in message["metadata"]["title"]
 
 
 def test_examples_are_three_and_match_the_loaded_data(state: SessionState, base: BaseData) -> None:
