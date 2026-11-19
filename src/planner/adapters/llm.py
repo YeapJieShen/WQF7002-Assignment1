@@ -66,7 +66,11 @@ def chain(models: Sequence[ChatRunnable]) -> ChatRunnable:
     return first.with_fallbacks(list(rest), exceptions_to_handle=BACKEND_ERRORS)
 
 
-def client(endpoint: Endpoint, http_client: httpx2.Client | None = None) -> ChatRunnable:
+def client(
+    endpoint: Endpoint,
+    http_client: httpx2.Client | None = None,
+    http_async_client: httpx2.AsyncClient | None = None,
+) -> ChatRunnable:
     """Build the chat client for one endpoint, with the tools bound.
 
     The model may answer in text or call one tool; it is never forced to call one.
@@ -74,6 +78,7 @@ def client(endpoint: Endpoint, http_client: httpx2.Client | None = None) -> Chat
     Args:
         endpoint: The backend to talk to.
         http_client: Used instead of the SDK's own, for a visitor's endpoint that must be vetted.
+        http_async_client: The same, for async calls.
     """
     # max_retries=0: a failing endpoint should hand over to the next one at once.
     chat = ChatOpenAI(
@@ -83,5 +88,6 @@ def client(endpoint: Endpoint, http_client: httpx2.Client | None = None) -> Chat
         request_timeout=endpoint.timeout_s,
         max_retries=0,
         http_client=http_client,
+        http_async_client=http_async_client,
     )
     return chat.bind_tools(tool_specs(), tool_choice="auto", parallel_tool_calls=False)
