@@ -19,7 +19,7 @@ demo = build_app(
 
 def main() -> None:  # pragma: no cover - starts a server
     """Launch the web app."""
-    demo.launch(theme=THEME, css=CSS, pwa=True, max_file_size=settings.import_max_bytes)
+    demo.launch(theme=THEME, css=CSS, pwa=True, max_file_size=settings.upload_max_bytes)
 
 
 if __name__ == "__main__":  # pragma: no cover

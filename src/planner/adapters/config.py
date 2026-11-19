@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Sent as the bearer token when none is given: Ollama ignores it but the client requires one.
@@ -61,7 +61,11 @@ class Settings(BaseSettings):
             app is busy. Without a value Gradio allows one on ZeroGPU.
         custom_timeout_s: Seconds a visitor's own endpoint has to answer before the turn fails.
         message_max_chars: Longest chat message accepted, in characters.
-        import_max_bytes: Largest session file the import button accepts, in bytes.
+        import_max_bytes: Largest session file the import button accepts, in bytes. Checked in
+            the import handler before the file is read, so the visitor sees a clear message.
+        upload_max_bytes: Hard transport limit on any upload, passed to Gradio's `max_file_size`.
+            Gradio rejects a larger file with a generic error, so keep it above
+            `import_max_bytes`; it is only a backstop.
     """
 
     model_config = SettingsConfigDict(
@@ -83,3 +87,11 @@ class Settings(BaseSettings):
     custom_timeout_s: float = Field(default=30, gt=0)
     message_max_chars: int = Field(default=4000, ge=1)
     import_max_bytes: int = Field(default=1_000_000, ge=1)
+    upload_max_bytes: int = Field(default=10_000_000, ge=1)
+
+    @model_validator(mode="after")
+    def _backstop_above_import_limit(self) -> Self:
+        if self.upload_max_bytes <= self.import_max_bytes:
+            msg = "upload_max_bytes must exceed import_max_bytes, or Gradio hides our message"
+            raise ValueError(msg)
+        return self

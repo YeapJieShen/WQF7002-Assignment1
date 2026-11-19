@@ -59,3 +59,9 @@ def test_a_limit_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLANNER_QUEUE_MAX_SIZE", "0")
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_the_upload_backstop_must_exceed_the_import_limit() -> None:
+    assert Settings(_env_file=None).upload_max_bytes == 10_000_000
+    with pytest.raises(ValidationError, match="upload_max_bytes"):
+        Settings(_env_file=None, import_max_bytes=2_000_000, upload_max_bytes=2_000_000)
