@@ -1,5 +1,8 @@
 from datetime import date, datetime
 
+import pytest
+from pydantic import ValidationError
+
 from planner.app.tools.args import (
     AddTaskArgs,
     CheckFeasibilityArgs,
@@ -172,6 +175,7 @@ def test_deleting_all_tasks_does_not_restart_the_numbering(state: SessionState) 
 
 
 def test_update_revalidates_the_merged_task(state: SessionState) -> None:
-    patch = TaskPatch(type=TaskType.FIXED_EVENT)
-    result = update_task(state, UpdateTaskArgs(task_id="T3", fields=patch))
-    assert result.state.task("T3") is not None
+    unchecked = TaskPatch.model_construct(duration_min=-5)  # skips the patch's own checks
+    args = UpdateTaskArgs.model_construct(task_id="T3", fields=unchecked)
+    with pytest.raises(ValidationError):
+        update_task(state, args)
