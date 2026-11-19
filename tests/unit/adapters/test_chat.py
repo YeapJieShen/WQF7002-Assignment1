@@ -55,7 +55,9 @@ def test_the_cost_line_follows_the_reply_and_is_recorded(
     backend, tab = make(ScriptedModel(AIMessage("Hello", usage_metadata=usage)), state, base)
     reply = run(tab, backend, "hi")[-1][-1]["content"]
     assert reply.startswith("Hello\n\n*12 tokens*\n\n")
-    assert reply.endswith("5 in / 7 out tokens</span>")  # this reply's own seconds and tokens
+    assert (
+        "5 In / 7 Out Tokens · " in reply.rsplit("turn-usage", 1)[1]
+    )  # this reply's own seconds and tokens
     assert tab.turns[0].cost == "12 tokens"
     assert tab.turns[0].usage is not None
     assert tab.turns[0].seconds >= 0
@@ -67,7 +69,9 @@ def test_each_stage_is_its_own_row_and_the_reply_comes_last(
     model = ScriptedModel(call("add_task", {"title": "Post parcel"}), AIMessage("Added."))
     backend, tab = make(model, state, base, price=None)
     final = run(tab, backend, "add")[-1]
-    assert [t.split(" <")[0] for t in titles(final) if t] == ["add_task"]  # one row for the call
+    assert [t.split(" <")[0] for t in titles(final) if t] == [
+        "*Tool call:* *add_task*"
+    ]  # one row for the call
     assert 'badge ok">done' in titles(final)[1]
     assert final[-1]["content"].startswith("Added.\n\n")
     assert [r.stage for r in tab.turns[0].stages] == ["check", "act"]
@@ -105,7 +109,7 @@ def test_a_confirmation_pauses_then_the_answer_finishes_it(
     )[-1]
     assert final[-1]["content"].startswith("Deleted.")
     assert [t.said for t in tab.turns] == ["delete T4", "(confirmed)"]
-    assert [t.split(" <")[0] for t in titles(final) if t] == ["delete_task"]
+    assert [t.split(" <")[0] for t in titles(final) if t] == ["*Tool call:* *delete_task*"]
     assert 'badge ok">done' in titles(final)[-2]
 
 
