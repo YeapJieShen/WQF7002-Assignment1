@@ -1,6 +1,7 @@
 import inspect
 import json
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -65,7 +66,7 @@ def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
     assert box["interactive"] is True
     assert card["visible"] is False
     assert question == ""
-    assert len(rest) == 12 + 1
+    assert len(rest) == 13 + 1
     assert len(rest[-1]) == 5
 
 
@@ -101,11 +102,17 @@ def test_chat_streams_the_reply_and_refresh_shows_the_new_tasks() -> None:
     assert frames[0][0] == [{"role": "user", "content": "add a parcel task"}]
     assert frames[0][1]["interactive"] is False
     assert frames[-1][0][-1]["content"] == "Added."
-    box, tasks, chip, card, question = ctl.refresh(tab)
+    box, tasks, chip, card, question, usage = ctl.refresh(tab)
     assert any(row[1] == "Post parcel" for row in tasks)
     assert box["interactive"] is True
     assert card["visible"] is False
     assert (chip, question) == ("📍 Home", "")
+    assert re.fullmatch(r"\d+\.\d s", usage)  # the turn's seconds, outside the reply text
+
+
+def test_a_tab_with_no_turn_has_no_usage_line() -> None:
+    ctl = controller()
+    assert ctl.refresh(boot(ctl))[-1] == ""
 
 
 def test_blank_and_whitespace_messages_do_nothing() -> None:
@@ -133,12 +140,12 @@ def test_a_delete_shows_the_card_then_the_answer_settles_it() -> None:
     ctl = controller(ScriptedModel(call("delete_task", {"task_id": "T4"}), AIMessage("Deleted.")))
     tab = ctl.demo(None)[0]
     history = chat(ctl, tab, "delete T4")[-1][0]
-    box, _, _, card, question = ctl.refresh(tab)
+    box, _, _, card, question, _ = ctl.refresh(tab)
     assert card["visible"] is True
     assert "T4" in question
     assert box["interactive"] is False
     assert list(ctl.approve(tab, history))[-1][-1]["content"] == "Deleted."
-    box, tasks, _, card, _ = ctl.refresh(tab)
+    box, tasks, _, card, _, _ = ctl.refresh(tab)
     assert all(row[0] != "T4" for row in tasks)
     assert card["visible"] is False
     assert box["interactive"] is True

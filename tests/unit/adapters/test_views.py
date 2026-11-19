@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from planner.adapters.session import Usage
 from planner.adapters.views import (
     EXAMPLES_SHOWN,
     SAMPLE_DAYS,
@@ -16,6 +17,7 @@ from planner.adapters.views import (
     task_rows,
     thinking,
     travel_rows,
+    usage_line,
 )
 from planner.app.calls import CallRecord
 from planner.domain.models import BaseData, Pace, SessionState
@@ -85,6 +87,11 @@ def test_the_pending_line_rotates_its_text_and_names_a_running_tool() -> None:
     assert thinking(len(THINKING_WORDS))["content"] == first["content"]
     assert thinking(5, "add_task")["content"].endswith("Running add_task…")
     assert "metadata" not in first  # plain reply text, not a collapsible box nested in the bubble
+
+
+def test_the_usage_line_gives_seconds_and_tokens() -> None:
+    assert usage_line(3.24, Usage(1234, 56)) == "3.2 s · 1,234 in / 56 out tokens"
+    assert usage_line(0.04, None) == "0.0 s"
 
 
 def test_examples_are_three_and_match_the_loaded_data(state: SessionState, base: BaseData) -> None:

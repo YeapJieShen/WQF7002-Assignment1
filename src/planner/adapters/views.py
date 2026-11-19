@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from random import Random
 
+    from planner.adapters.session import Usage
     from planner.app.calls import CallRecord
     from planner.domain.models import BaseData, Place, SessionState
 
@@ -130,6 +131,14 @@ def thinking(tick: int, tool: str | None = None) -> Message:
     """
     text = f"Running {tool}…" if tool else THINKING_WORDS[tick % len(THINKING_WORDS)]
     return {"role": "assistant", "content": f'<span class="spinner"></span>{text}'}
+
+
+def usage_line(seconds: float, usage: Usage | None) -> str:
+    """Summarise a turn, such as `3.2 s · 1,200 in / 40 out tokens`."""
+    parts = [f"{seconds:.1f} s"]
+    if usage:
+        parts.append(f"{usage.input_tokens:,} in / {usage.output_tokens:,} out tokens")
+    return " · ".join(parts)
 
 
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:
