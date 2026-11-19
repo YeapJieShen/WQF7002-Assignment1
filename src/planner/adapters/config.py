@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         queue_max_size: Events allowed to wait in the queue; beyond it visitors are told the
             app is busy. Without a value Gradio allows one on ZeroGPU.
         custom_timeout_s: Seconds a visitor's own endpoint has to answer before the turn fails.
+        allow_private_endpoints: Lets a visitor's own endpoint use http and addresses inside the
+            server's network, such as http://localhost:11434/v1 for Ollama. For local testing
+            only: on a public deployment it would let visitors reach the server's network.
+        provider_error_max_chars: Longest provider error text shown in the chat, in characters.
         message_max_chars: Longest chat message accepted, in characters.
         import_max_bytes: Largest session file the import button accepts, in bytes. Checked in
             the import handler before the file is read, so the visitor sees a clear message.
@@ -85,6 +89,8 @@ class Settings(BaseSettings):
     concurrency_limit: int = Field(default=4, ge=1)
     queue_max_size: int = Field(default=20, ge=1)
     custom_timeout_s: float = Field(default=30, gt=0)
+    allow_private_endpoints: bool = False
+    provider_error_max_chars: int = Field(default=300, ge=1)
     message_max_chars: int = Field(default=4000, ge=1)
     import_max_bytes: int = Field(default=1_000_000, ge=1)
     upload_max_bytes: int = Field(default=10_000_000, ge=1)

@@ -15,7 +15,6 @@ from planner.adapters.backend import Backend
 from planner.adapters.backends import (
     BACKEND_DOWN,
     BILLING,
-    NOT_HTTPS,
     ZEROGPU_DOCS,
     AppBackend,
     EndpointTimeoutError,
@@ -24,9 +23,11 @@ from planner.adapters.backends import (
     build_backend,
 )
 from planner.adapters.config import Endpoint, Settings
+from planner.adapters.endpoint_guard import NOT_HTTPS, BlockedEndpointError
 from planner.adapters.session import Session, Token, Usage
 from planner.domain.models import BaseData, SessionState
 
+pytestmark = pytest.mark.usefixtures("public_dns")
 KEY = "sk-secret-0123456789"
 CUSTOM = Endpoint(
     name="mine", base_url="https://api.example.com/v1", model="m", api_key=SecretStr(KEY)
@@ -51,11 +52,11 @@ def _fails(error: Exception) -> RunnableLambda[object, AIMessage]:
 
 
 def local() -> AppBackend:
-    return AppBackend(DEFAULT, zerogpu=False)
+    return AppBackend(DEFAULT, zerogpu=False, allow_private=False, error_max_chars=300)
 
 
 def gpu() -> AppBackend:
-    return AppBackend(DEFAULT, zerogpu=True)
+    return AppBackend(DEFAULT, zerogpu=True, allow_private=False, error_max_chars=300)
 
 
 @pytest.mark.parametrize("name", ["model", "explain", "cost"])
@@ -80,14 +81,14 @@ def test_a_custom_endpoint_gets_its_own_client() -> None:
 
 @pytest.mark.parametrize("url", ["http://api.example.com/v1", "api.example.com", "ftp://x"])
 def test_a_custom_endpoint_must_use_https(url: str) -> None:
-    with pytest.raises(ValueError, match="https") as caught:
+    with pytest.raises(BlockedEndpointError, match="https") as caught:
         local().model(CUSTOM.model_copy(update={"base_url": url}))
     assert str(caught.value) == NOT_HTTPS
     assert KEY not in str(caught.value)
 
 
 def test_provider_errors_lose_the_key() -> None:
-    model = _Redacting(_fails(_rejects_key()), KEY, 30)
+    model = _Redacting(_fails(_rejects_key()), KEY, 30, 300)
     with pytest.raises(ProviderError) as caught:
         model.invoke([HumanMessage("hi")])
     assert KEY not in str(caught.value)
@@ -102,17 +103,17 @@ def test_provider_errors_lose_the_key() -> None:
 def test_an_empty_key_is_not_redacted_everywhere() -> None:
     error = openai.APIConnectionError(request=REQUEST)
     with pytest.raises(ProviderError, match=r"^Connection error\.$"):
-        _Redacting(_fails(error), "", 30).invoke([])
+        _Redacting(_fails(error), "", 30, 300).invoke([])
 
 
 def test_other_errors_pass_through_a_custom_client() -> None:
     with pytest.raises(ValueError, match="bug"):
-        _Redacting(_fails(ValueError("bug")), KEY, 30).invoke([])
+        _Redacting(_fails(ValueError("bug")), KEY, 30, 300).invoke([])
 
 
 def test_a_custom_client_still_streams_tokens(state: SessionState, base: BaseData) -> None:
     chat = GenericFakeChatModel(messages=iter([AIMessage("Hello there")]))
-    session = Session(_Redacting(chat, KEY, 30), base, "rules", state, max_rejections=3)
+    session = Session(_Redacting(chat, KEY, 30, 300), base, "rules", state, max_rejections=3)
     tokens = [e.text for e in session.stream("hi") if isinstance(e, Token)]
     assert len(tokens) > 1
     assert "".join(tokens) == "Hello there"
@@ -214,7 +215,7 @@ def test_zerogpu_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_custom_endpoint_that_times_out_says_how_long_it_was_given() -> None:
     error = openai.APITimeoutError(request=REQUEST)
     with pytest.raises(EndpointTimeoutError) as caught:
-        _Redacting(_fails(error), KEY, 30).invoke([])
+        _Redacting(_fails(error), KEY, 30, 300).invoke([])
     explained = local().explain(caught.value, signed_in=False, custom=True)
     assert explained == (
         "Your endpoint didn't answer within 30 s. Check that it is up, or try a faster model."
