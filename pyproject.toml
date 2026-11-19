@@ -6,7 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "personal-resource-planner"
 version = "0.1.0"
 description = "Planning delegate: an intelligent agent that knows its limits"
+readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jie Shen Yeap" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = [
     "gradio[oauth]",
     "langgraph",
@@ -17,20 +28,24 @@ dependencies = [
     "pydantic-settings",
 ]
 
+[project.urls]
+Repository = "https://github.com/YeapJieShen/WQF7002-Assignment1"
+
 [project.scripts]
 planner = "planner.__main__:main"
 
 [dependency-groups]
+# Exact pins (no lockfile): a tool release cannot break CI without a reviewed bump (Dependabot opens it).
 dev = [
-    "hypothesis",
-    "import-linter",
-    "mypy",
+    "hypothesis==6.170.11",
+    "import-linter==2.15",
+    "mypy==2.4.0",
     "pandas-stubs==3.1.0.261029",
-    "pytest",
-    "pytest-cov",
-    "ruff",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.2",
 ]
-# What the ZeroGPU Space adds (space/requirements.txt pins it); never needed for tests or CI.
+# What the ZeroGPU Space adds, as ranges; space/requirements.txt holds the exact pins. Never needed for tests or CI.
 space = [
     "spaces",
     "torch",
@@ -81,7 +96,7 @@ convention = "google"
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["src", "tests"]
+files = ["src", "tests", "scripts", "space/app.py"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 
@@ -122,4 +137,16 @@ layers = ["planner.adapters", "planner.app", "planner.domain"]
 name = "Domain and app stay framework-free"
 type = "forbidden"
 source_modules = ["planner.domain", "planner.app"]
-forbidden_modules = ["langgraph", "langchain_core", "langchain_openai", "openai", "gradio"]
+forbidden_modules = [
+    "langgraph",
+    "langchain",
+    "langchain_core",
+    "langchain_community",
+    "langchain_openai",
+    "openai",
+    "gradio",
+    "transformers",
+    "torch",
+    "spaces",
+    "pandas",
+]
