@@ -1,6 +1,12 @@
 import pytest
 
-from planner.adapters.data import list_personas, load_persona, load_rules
+from planner.adapters.data import (
+    list_personas,
+    load_persona,
+    load_rules,
+    persona_choices,
+    persona_label,
+)
 from planner.domain.models import ANYWHERE, BaseData, Mode, SessionState, Weekday
 
 
@@ -75,3 +81,11 @@ def test_every_persona_loads_with_known_places_and_tasks(name: str, base: BaseDa
 
 def test_there_is_a_second_persona() -> None:
     assert "persona_saturday" in list_personas()
+
+
+def test_a_persona_is_labelled_by_its_start_and_every_persona_is_offered() -> None:
+    assert persona_label(load_persona("persona_wednesday")) == "Wednesday 28 Oct, 15:40"
+    choices = persona_choices()
+    assert ("Saturday 31 Oct, 09:30", "persona_saturday") in choices
+    assert {name for _, name in choices} == set(list_personas())
+    assert choices[0][0].startswith("Wednesday")  # earliest start first

@@ -85,6 +85,12 @@ def test_try_a_demo_loads_the_persona_on_a_simulated_clock() -> None:
     assert tab.session.state.now == datetime(2026, 10, 28, 15, 40)
 
 
+def test_try_a_demo_loads_the_chosen_persona() -> None:
+    ctl = controller()
+    tab = ctl.demo(boot(ctl), "persona_saturday")[0]
+    assert tab.session.state.now == datetime(2026, 10, 31, 9, 30)
+
+
 def test_a_restart_keeps_the_visitors_own_endpoint() -> None:
     ctl = controller()
     tab = boot(ctl)
@@ -443,8 +449,13 @@ def test_choosing_the_default_model_applies_at_once_and_hides_the_endpoint_field
 def test_the_model_choice_is_a_dropdown_and_the_charge_notice_hides_behind_a_help_mark() -> None:
     app = build_app(FakeBackend(ScriptedModel()), settings())
     blocks = list(app.blocks.values())
-    [dropdown] = [b for b in blocks if b.get_block_name() == "dropdown"]
-    assert [value for _, value in getattr(dropdown, "choices", [])] == ["default", "custom"]
+    offered = [
+        [value for _, value in getattr(b, "choices", [])]
+        for b in blocks
+        if b.get_block_name() == "dropdown"
+    ]
+    assert ["default", "custom"] in offered
+    assert ["persona_wednesday", "persona_saturday"] in offered  # the demo's personas
     assert not any(
         "charge you" in str(getattr(b, "value", "")) and b.get_block_name() == "markdown"
         for b in blocks
