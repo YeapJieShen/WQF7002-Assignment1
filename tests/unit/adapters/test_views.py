@@ -11,9 +11,11 @@ from planner.adapters.session import Usage
 from planner.adapters.views import (
     EXAMPLES_SHOWN,
     NODE_SIZE,
+    PACE_CHART_HEIGHT,
     SAMPLE_DAYS,
     SAMPLE_MIN,
     THINKING_WORDS,
+    USAGE_HINT,
     call_message,
     edge_labels,
     examples,
@@ -85,9 +87,10 @@ def test_a_refused_call_ends_as_rejected_or_declined() -> None:
 
 def test_the_row_body_lists_every_stage_and_the_title_names_the_tool() -> None:
     message = call_message([record("check", "accepted"), record("act", "Deleted T4.")])
-    assert message["metadata"]["title"].startswith("delete_task ")
-    assert "- check: accepted" in message["content"]
-    assert "- act: Deleted T4." in message["content"]
+    assert message["metadata"]["title"].startswith("*Tool call:* *delete_task* ")
+    assert "- Check: *Accepted*" in message["content"]
+    assert "- Act: *Deleted T4.*" in message["content"]
+    assert message["content"].startswith("Args: `delete_task` ")
     assert "✅" not in message["metadata"]["title"]
 
 
@@ -100,14 +103,18 @@ def test_the_pending_line_rotates_its_text_and_names_a_running_tool() -> None:
 
 
 def test_the_usage_line_gives_seconds_and_tokens() -> None:
-    assert usage_line(3.24, Usage(1234, 56)) == "3.2 s · 1,234 in / 56 out tokens"
+    assert usage_line(3.24, Usage(1234, 56)) == "1,234 In / 56 Out Tokens · 3.2 s"
     assert usage_line(0.04, None) == "0.0 s"
+    assert (
+        usage_line(4.5, Usage(4765, 22, cached_tokens=3600))
+        == "4,765 In (3,600 Cached) / 22 Out Tokens · 4.5 s"
+    )
 
 
 def test_the_usage_footer_wraps_the_line_for_the_page_to_place() -> None:
     assert (
         usage_footer(3.24, Usage(1, 2))
-        == '<span class="turn-usage">3.2 s · 1 in / 2 out tokens</span>'
+        == f'<span class="turn-usage" title="{USAGE_HINT}">1 In / 2 Out Tokens · 3.2 s</span>'
     )
 
 
@@ -184,3 +191,21 @@ def test_the_pace_chart_plans_the_sample_task_day_by_day(
     tight = state.model_copy(update={"pace": Pace(daily_limit_min=120)})
     assert pace_chart(tight, base)["minutes"].iloc[0] <= 120
     assert pace_chart(tight, base)["minutes"].sum() > 120
+
+
+def test_the_pace_chart_ignores_the_time_of_day(state: SessionState, base: BaseData) -> None:
+    morning = state.model_copy(update={"now": datetime(2026, 11, 19, 8, 5)})
+    evening = state.model_copy(update={"now": datetime(2026, 11, 19, 21, 40)})
+    assert pace_chart(morning, base).equals(pace_chart(evening, base))
+    assert pace_figure(morning, base, "#336699") == pace_figure(evening, base, "#336699")
+
+
+def test_the_pace_figure_has_a_fixed_height_so_a_redraw_keeps_the_page_length(
+    state: SessionState, base: BaseData
+) -> None:
+    assert pace_figure(state, base, "#336699").layout.height == PACE_CHART_HEIGHT
+
+
+def test_a_rejection_keeps_its_reason_outside_the_italics() -> None:
+    message = call_message([record("check", "rejected: unknown place")])
+    assert "- Check: *Rejected* — unknown place" in message["content"]

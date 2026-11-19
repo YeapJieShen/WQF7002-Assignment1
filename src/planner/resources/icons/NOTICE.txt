@@ -1,0 +1,2 @@
+Icons are from Lucide (https://lucide.dev), ISC licence, (c) Lucide Contributors.
+save.svg = download, load.svg = upload, log.svg = file-text.

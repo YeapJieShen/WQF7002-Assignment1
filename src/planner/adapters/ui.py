@@ -35,6 +35,7 @@ from planner.adapters.endpoint_guard import loggable
 from planner.adapters.logs import emit
 from planner.adapters.transcript import transcript
 from planner.adapters.views import (
+    PACE_CHART_HEIGHT,
     PLACE_HEADERS,
     TASK_HEADERS,
     TRAVEL_HEADERS,
@@ -79,11 +80,33 @@ MARK_PASTE_JS: Final = f"""(text) => {{
   window.plannerPasted = false;
   return pasted ? {json.dumps(PASTE_MARK)} + text : text;
 }}"""
+# Gradio 6.31 copies a message's stored text, usage footer included, and has no hook to change it.
+# So the page wraps `navigator.clipboard.writeText` and drops that one span (exact class only).
+USAGE_SPAN: Final = r'\s*<span class="turn-usage"[^>]*>.*?</span>'
+COPY_JS: Final = (
+    "() => { const write = navigator.clipboard.writeText.bind(navigator.clipboard);"
+    " const strip = new RegExp("
+    + json.dumps(USAGE_SPAN)
+    + ', "g");'
+    + " navigator.clipboard.writeText = (text) => write(String(text).replace(strip, '')); }"
+)
 # Textbox has no built-in "disabled while empty": grey the submit arrow from the page.
 ARROW_JS: Final = f"""(text) => {{
   const arrow = document.querySelector("#{BOX_ID} button[data-testid=submit-button]");
   if (arrow) arrow.disabled = !(text || "").trim();
 }}"""
+_HINTS: Final = {
+    "save-btn": "Your tasks and settings as a file you can load later",
+    "load-btn": "Your tasks and settings as a file you can load later",
+    "log-btn": "The full conversation with every tool step, for reading; cannot be loaded back",
+}
+HINTS_JS: Final = (
+    "() => { const hints = "
+    + json.dumps(_HINTS)
+    + "; for (const [id, text] of Object.entries(hints)) {"
+    + " const el = document.getElementById(id); if (el) el.title = text; } }"
+)
+"""Hover hints for the toolbar buttons, which Gradio buttons cannot carry themselves."""
 LEAVE_JS: Final = """() => {
   window.addEventListener("beforeunload", (e) => {
     if (window.plannerHasChat) { e.preventDefault(); e.returnValue = ""; }
@@ -96,7 +119,7 @@ MB: Final = 1000 * KB
 MESSAGE_TOO_LONG: Final = (
     "Message is {actual:,} characters; the limit is {limit:,}. Shorten it or split it."
 )
-FILE_TOO_LARGE: Final = "File is {actual}; the limit is {limit}. Export a smaller session."
+FILE_TOO_LARGE: Final = "File is {actual}; the limit is {limit}. Save a smaller session."
 
 
 def size_text(size: int) -> str:
@@ -111,18 +134,39 @@ CHARGE_NOTICE: Final = (
     "tool calling."
 )
 HELP_HTML: Final = (
-    '<div class="help" title="'
+    '<div class="help"><span>Endpoint details</span>'
+    '<span class="help-mark" tabindex="0" role="button" aria-label="Endpoint details" '
+    'aria-describedby="endpoint-help"><b>?</b>'
+    '<span id="endpoint-help" role="tooltip" class="help-tip">'
     + html.escape(CHARGE_NOTICE.replace("**", "").replace("`", ""))
-    + '"><span>Endpoint details</span><b>?</b></div>'
+    + "</span></span></div>"
 )
-"""The notice behind a small "?" that shows it on hover, so it does not fill the sidebar."""
+"""The notice behind a small "?": a tooltip on hover, focus or tap, so it stays out of the way."""
+_ICONS: Final = Path(__file__).resolve().parent.parent / "resources" / "icons"
+
+
+def _icon(name: str) -> str:
+    """Path of a toolbar icon shipped as package data."""
+    return str(_ICONS / f"{name}.svg")
+
+
 THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
-CSS: Final = """
+CSS: Final = (
+    """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
 .header { flex-wrap: wrap; align-items: center; }
-.header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
-.toolbar { justify-content: flex-end; flex-wrap: nowrap; }
-.block.chip { border: 0; padding: 0; background: none; flex: 0 0 auto !important; }
+.header > div:first-child { flex: 1 0 100% !important; }
+.toolbar { justify-content: flex-end; flex-wrap: nowrap; flex: 0 0 auto !important; width: auto;
+  margin-left: auto; }
+.toolbar button { flex-direction: row !important; flex-wrap: nowrap !important;
+  align-items: center; justify-content: center; white-space: nowrap; gap: var(--spacing-sm);
+  width: max-content !important; min-width: max-content !important;
+  padding: 0 var(--spacing-xl); }
+.toolbar button img { position: static !important; margin: 0 !important; flex: 0 0 auto; }
+@media (max-width: 640px) { .toolbar { flex: 1 1 100% !important; flex-wrap: wrap;
+  justify-content: flex-start; margin-left: 0; } }
+.block.chip { width: fit-content !important; border: 0; padding: 0; background: none;
+  flex: 0 0 auto !important; }
 .chip:not(.block) { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
   padding: var(--spacing-sm) var(--spacing-xl); width: fit-content; }
 .chip p { margin: 0; }
@@ -143,21 +187,37 @@ CSS: Final = """
 .bot.message:has(.turn-usage) { position: relative; }
 .bot.message .message:has(.turn-usage) { position: static; }
 .turn-usage { position: absolute; left: 2rem; top: calc(100% + 11px); white-space: nowrap;
-  line-height: 24px; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+  line-height: 24px; font-style: italic; color: var(--body-text-color-subdued);
+  font-size: var(--text-sm); }
 .caption p { color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
+.persona input { padding-right: var(--size-8); text-overflow: ellipsis; overflow: hidden;
+  white-space: nowrap; }
 .confirm-card { border: 1px solid var(--primary-500) !important; }
 .confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
 .confirm-card * { border-color: transparent; }
+.persona input { padding-right: var(--size-8); text-overflow: ellipsis; overflow: hidden;
+  white-space: nowrap; }
 .confirm-card button.secondary { background: transparent; color: var(--primary-500);
   border: 1px solid var(--primary-500); }
 .help { display: flex; justify-content: space-between; align-items: center; }
+.help-mark { position: relative; cursor: help; }
+.help-tip { display: none; position: absolute; right: 0; top: 100%; z-index: 10; width: 16rem;
+  max-width: 70vw; white-space: pre-line; padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--background-fill-primary); color: var(--body-text-color);
+  border: 1px solid var(--border-color-primary); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-drop-lg); font-size: var(--text-sm); }
+.help-mark:hover .help-tip, .help-mark:focus .help-tip, .help-mark:focus-within .help-tip {
+  display: block; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
 .confirm-card .row { padding: 0 var(--spacing-md) var(--spacing-md); }
 .examples button, .example { border: 1px solid var(--border-color-primary) !important;
   border-radius: var(--radius-lg); }
 .examples button:hover, .example:hover { border-color: var(--border-color-accent) !important; }
 """
+    # Fixed so a redraw never shortens the page, which would clamp the scroll position to the top.
+    f".pace-chart {{ min-height: {PACE_CHART_HEIGHT}px; }}"
+)
 WEEKDAYS: Final = tuple(Weekday)
 # The most a pace control accepts is the domain's own bound on a number of minutes, read from the
 # schema Pydantic derives from `Minutes`, not from how the annotation happens to be assembled.
@@ -571,11 +631,31 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             gr.Markdown("# Planning delegate", min_width=220)
             chip = gr.Markdown(elem_classes="chip", scale=0, min_width=0, container=False)
             with gr.Row(elem_classes="toolbar"):
-                export_btn = gr.Button("Export", size="sm", scale=0, min_width=90)
-                import_btn = gr.UploadButton(
-                    "Import", file_types=[".json"], size="sm", scale=0, min_width=90
+                export_btn = gr.Button(
+                    "Save session",
+                    icon=_icon("save"),
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="save-btn",
                 )
-                transcript_btn = gr.Button("Transcript", size="sm", scale=0, min_width=90)
+                import_btn = gr.UploadButton(
+                    "Load session",
+                    icon=_icon("load"),
+                    file_types=[".json"],
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="load-btn",
+                )
+                transcript_btn = gr.Button(
+                    "Download chat log",
+                    icon=_icon("log"),
+                    size="sm",
+                    scale=0,
+                    min_width=90,
+                    elem_id="log-btn",
+                )
         download = gr.File(label="Download", visible=False)
         with gr.Tabs():
             with gr.Tab("Chat"):
@@ -627,8 +707,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                         label="Daily limit (min)", precision=0, minimum=0, maximum=MAX_MIN
                     )
                     consecutive = gr.Number(
-                        label="Longest run before a long break (min)",
-                        info="0 turns long breaks off",
+                        label="Longest run before a long break (min, 0 = off)",
                         precision=0,
                         minimum=0,
                         maximum=MAX_MIN,
@@ -657,7 +736,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 gr.Markdown(
                     "Example: how a 10-hour task is spread across the days.", elem_classes="caption"
                 )
-                chart = gr.Plot(label="Pace", show_label=False)
+                chart = gr.Plot(label="Pace", show_label=False, elem_classes="pace-chart")
                 reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
         with gr.Sidebar(label="Settings", open=False, position="right"):
             gr.Markdown("### Session")
@@ -665,6 +744,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 persona_choices(),
                 value=PERSONA,
                 label="Sample persona",
+                elem_classes="persona",
                 info="Loads a sample week; the clock starts at the shown time",
                 filterable=False,
             )
@@ -676,6 +756,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 container=False,
                 show_label=False,
                 filterable=False,
+                elem_classes="persona",
             )
             with gr.Group(visible=False) as own:
                 gr.HTML(HELP_HTML)
@@ -697,6 +778,8 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         app.load(ctl.boot, None, reset, api_visibility="private")
         app.load(None, None, None, js=WATCH_PASTE_JS)
         app.load(None, None, None, js=LEAVE_JS)
+        app.load(None, None, None, js=HINTS_JS)
+        app.load(None, None, None, js=COPY_JS)
         app.load(None, box, None, js=ARROW_JS)
         box.change(None, box, None, js=ARROW_JS)
         chatbot.change(None, chatbot, None, js=CHAT_CHANGED_JS)

@@ -86,8 +86,8 @@ def test_there_is_a_second_persona() -> None:
 
 
 def test_a_persona_is_labelled_by_its_start_and_every_persona_is_offered() -> None:
-    assert persona_label(load_persona("persona_wednesday")) == "Wednesday 28 Oct, 15:40"
+    assert persona_label(load_persona("persona_wednesday")) == "Wed 28 Oct, 15:40"
     choices = persona_choices()
-    assert ("Persona 2: Saturday 31 Oct, 09:30", "persona_saturday") in choices
+    assert ("Persona 2 · Sat 31 Oct, 09:30", "persona_saturday") in choices
     assert {name for _, name in choices} == set(list_personas())
-    assert choices[0][0] == "Persona 1: Wednesday 28 Oct, 15:40"  # earliest start first
+    assert choices[0][0] == "Persona 1 · Wed 28 Oct, 15:40"  # earliest start first

@@ -16,6 +16,7 @@ from planner.adapters.chat import Tab
 from planner.adapters.config import Settings
 from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
+    COPY_JS,
     FILE_TOO_LARGE,
     HELP_HTML,
     MARK_PASTE_JS,
@@ -23,6 +24,7 @@ from planner.adapters.ui import (
     MESSAGE_TOO_LONG,
     PASTE_MARK,
     SESSION_LOST,
+    USAGE_SPAN,
     WATCH_PASTE_JS,
     Controller,
     build_app,
@@ -31,7 +33,7 @@ from planner.adapters.ui import (
     real_now,
     size_text,
 )
-from planner.adapters.views import SAMPLE_DAYS
+from planner.adapters.views import SAMPLE_DAYS, USAGE_HINT
 from planner.domain.models import Pace, Weekday
 from tests.unit.adapters.fakes import Boom, FailingModel, FakeBackend, ScriptedModel, call
 
@@ -61,7 +63,7 @@ def chat(ctl: Controller, tab: Tab | None, text: str, profile: Any = None) -> li
 def reply(chat: list[dict[str, Any]]) -> str:
     """The last message's text without its usage footer."""
     content: str = chat[-1]["content"]
-    return content.split('\n\n<span class="turn-usage">', maxsplit=1)[0]
+    return content.split('\n\n<span class="turn-usage"', maxsplit=1)[0]
 
 
 def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
@@ -123,7 +125,9 @@ def test_chat_streams_the_reply_and_refresh_shows_the_new_tasks() -> None:
     assert box["interactive"] is True
     assert card["visible"] is False
     assert (chip, question) == ("📍 Home", "")
-    assert re.search(r'<span class="turn-usage">\d+\.\d s</span>$', frames[-1][0][-1]["content"])
+    assert re.search(
+        r'<span class="turn-usage" title="[^"]+">\d+\.\d s</span>$', frames[-1][0][-1]["content"]
+    )
 
 
 def test_blank_and_whitespace_messages_do_nothing() -> None:
@@ -433,7 +437,7 @@ def test_the_toolbar_has_the_file_buttons_and_the_demo_lives_in_the_sidebar() ->
     toolbar = {
         _caption(b) for b in blocks if getattr(b.parent, "elem_classes", None) == ["toolbar"]
     }
-    assert toolbar == {"Export", "Import", "Transcript"}
+    assert toolbar == {"Save session", "Load session", "Download chat log"}
 
 
 def test_choosing_the_default_model_applies_at_once_and_hides_the_endpoint_fields() -> None:
@@ -503,3 +507,11 @@ def test_the_weekday_limits_are_always_visible_with_one_reset_button() -> None:
     assert numbers[-7:] == [d.value.title() for d in Weekday]
     assert not any(b.get_block_name() == "accordion" and "weekday" in _caption(b) for b in blocks)
     assert [getattr(b, "value", None) for b in blocks].count("Reset to defaults") == 1
+
+
+def test_the_copy_wrapper_strips_only_the_usage_span() -> None:
+    reply = f'Hello.\n\n<span class="turn-usage" title="{USAGE_HINT}">1 In / 2 Out Tokens</span>'
+    assert re.sub(USAGE_SPAN, "", reply) == "Hello."
+    other = 'Keep <span class="turn-usage-x">this</span> and <span>this</span>'
+    assert re.sub(USAGE_SPAN, "", other) == other
+    assert json.dumps(USAGE_SPAN) in COPY_JS

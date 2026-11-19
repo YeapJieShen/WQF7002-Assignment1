@@ -71,6 +71,10 @@ class Engine(Protocol):
         """Yield the reply to `prompt` in pieces, stopping after the first call close marker."""
         ...
 
+    def cached(self, prompt: str, /) -> int:
+        """Return how many leading tokens of `prompt` were served from the prefix cache (else 0)."""
+        ...
+
 
 def to_chat(messages: Sequence[BaseMessage]) -> Chat:
     """Convert LangChain messages to the role/content dicts a chat template takes.
@@ -214,6 +218,8 @@ class TemplateChat(BaseChatModel):
             "output_tokens": used_out,
             "total_tokens": used_in + used_out,
         }
+        if cached := self.engine.cached(prompt):
+            reply.usage_metadata["input_token_details"] = {"cache_read": cached}
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
@@ -264,6 +270,14 @@ class PrefixCache:
                 return None
             return copy.deepcopy(self._cache)  # generate appends to the cache it is given
 
+    def reused(self, prompt: str, ids: Sequence[int]) -> int:
+        """Return how many leading tokens of `ids` a `lookup` of `prompt` serves from the cache."""
+        with self._lock:
+            cut = prompt.find(self.end_marker)
+            if cut < 0 or prompt[: cut + len(self.end_marker)] != self._head:
+                return 0
+            return len(self._head_ids) if list(ids[: len(self._head_ids)]) == self._head_ids else 0
+
 
 def cache_options(prefix: PrefixCache | None, prompt: str, ids: Sequence[int]) -> dict[str, Any]:
     """The `generate` options that reuse the cached first turn; empty when there is no cache.
@@ -275,9 +289,21 @@ def cache_options(prefix: PrefixCache | None, prompt: str, ids: Sequence[int]) -
 
 
 class _Transformers:  # pragma: no cover - needs the model weights and a GPU
-    def __init__(self, tokenizer: Any, generate: Any) -> None:  # noqa: ANN401 - untyped libraries
+    def __init__(
+        self,
+        tokenizer: Any,  # noqa: ANN401 - untyped libraries
+        generate: Any,  # noqa: ANN401 - untyped libraries
+        prefix: PrefixCache | None,
+    ) -> None:
         self._tokenizer = tokenizer
         self.generate = generate
+        self._prefix = prefix
+
+    def cached(self, prompt: str, /) -> int:
+        if self._prefix is None:
+            return 0
+        ids = self._tokenizer(prompt, add_special_tokens=False).input_ids
+        return self._prefix.reused(prompt, ids)
 
     def render(self, chat: Chat, tools: list[dict[str, Any]], /) -> str:
         return str(
@@ -347,4 +373,4 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
         Thread(target=model.generate, kwargs=options, daemon=True).start()
         yield from streamer
 
-    return _Transformers(tokenizer, generate)
+    return _Transformers(tokenizer, generate, prefix)

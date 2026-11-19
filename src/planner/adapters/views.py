@@ -37,6 +37,8 @@ TRAVEL_HEADERS: Final = ["From", "To", "Mode", "Min", "Buffer"]
 SAMPLE_MIN: Final = 600
 SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
+PACE_CHART_HEIGHT: Final = 400
+"""Pixels; also the chart container's minimum height (`ui.CSS`), so redraws keep the page length."""
 EXAMPLES_SHOWN: Final = 3
 FILL_ALPHA: Final = 0.3
 """How opaque the area under the Pace curve is."""
@@ -121,11 +123,18 @@ def call_message(records: Sequence[CallRecord], *, waiting: bool = False) -> Mes
     """
     last = records[-1]
     state, final = _call_state(last, waiting=waiting)
-    title = f'{last.tool} <span class="badge {state.css}">{state.text}</span>'
+    title = f'*Tool call:* *{last.tool}* <span class="badge {state.css}">{state.text}</span>'
     metadata: dict[str, str] = {"title": title, "status": "done" if final else "pending"}
-    lines = "\n".join(f"- {r.stage}: {r.outcome}" for r in records)
-    content = f"`{last.tool}` `{last.args}`\n\n{lines}"
+    lines = "\n".join(f"- {r.stage.capitalize()}: {_italic_outcome(r.outcome)}" for r in records)
+    content = f"Args: `{last.tool}` `{last.args}`\n\n{lines}"
     return {"role": "assistant", "content": content, "metadata": metadata}
+
+
+def _italic_outcome(outcome: str) -> str:
+    """Capitalise a stage outcome and italicise it; a rejection keeps its reason in plain text."""
+    word, sep, reason = outcome.partition(": ")
+    first = word[:1].upper() + word[1:]
+    return f"*{first}*" + (f" — {reason}" if sep else "")
 
 
 @dataclass(frozen=True)
@@ -158,12 +167,16 @@ def thinking(tick: int, tool: str | None = None) -> Message:
     return {"role": "assistant", "content": f'<span class="spinner"></span>{text}'}
 
 
+USAGE_HINT: Final = "Tokens the model read / wrote this turn, across all its calls"
+
+
 def usage_line(seconds: float, usage: Usage | None) -> str:
-    """Summarise a turn, such as `3.2 s · 1,200 in / 40 out tokens`."""
-    parts = [f"{seconds:.1f} s"]
+    """Summarise a turn, such as `1,200 In (900 Cached) / 40 Out Tokens · 3.2 s`."""
+    parts = []
     if usage:
-        parts.append(f"{usage.input_tokens:,} in / {usage.output_tokens:,} out tokens")
-    return " · ".join(parts)
+        cached = f" ({usage.cached_tokens:,} Cached)" if usage.cached_tokens else ""
+        parts = [f"{usage.input_tokens:,} In{cached} / {usage.output_tokens:,} Out Tokens"]
+    return " · ".join([*parts, f"{seconds:.1f} s"])
 
 
 def usage_footer(seconds: float, usage: Usage | None) -> str:
@@ -172,7 +185,7 @@ def usage_footer(seconds: float, usage: Usage | None) -> str:
     Gradio 6.31 has no per-message footer, so the reply carries this span and a few lines of
     CSS (`.turn-usage` in `ui.CSS`) place it under the message's copy button.
     """
-    return f'<span class="turn-usage">{usage_line(seconds, usage)}</span>'
+    return f'<span class="turn-usage" title="{USAGE_HINT}">{usage_line(seconds, usage)}</span>'
 
 
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:
@@ -204,9 +217,12 @@ def pace_chart(state: SessionState, base: BaseData) -> pd.DataFrame:
     """Plan minutes per day, from today to its deadline, for a sample task under this pace.
 
     The domain scheduler plans each day for a session holding only what is left of the sample
-    task, so the chart shows what `plan_day` would do with these pace settings.
+    task, so the chart shows what `plan_day` would do with these pace settings. The clock is
+    pinned to the start of the session's day, so a clock that keeps moving never reshapes the
+    curve: only the pace settings and the date do.
     """
     today = state.now.date()
+    state = state.model_copy(update={"now": datetime.combine(today, time.min)})
     days = [today + timedelta(days=i) for i in range(SAMPLE_DAYS + 1)]
     deadline = datetime.combine(days[-1], time(23, 59))
     left = SAMPLE_MIN
@@ -263,6 +279,7 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
     )
     figure.update_layout(
         showlegend=False,
+        height=PACE_CHART_HEIGHT,
         margin={"l": 50, "r": 50, "t": 20, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",

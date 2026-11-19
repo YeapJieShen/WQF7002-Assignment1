@@ -50,10 +50,13 @@ class Usage:
     Attributes:
         input_tokens: Prompt tokens.
         output_tokens: Generated tokens.
+        cached_tokens: Prompt tokens the backend served from its prefix cache; 0 when it has
+            none or does not say.
     """
 
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -219,6 +222,9 @@ def _usage(messages: list[AIMessage]) -> Usage | None:
     return Usage(
         input_tokens=sum(r["input_tokens"] for r in reports),
         output_tokens=sum(r["output_tokens"] for r in reports),
+        cached_tokens=sum(
+            (r.get("input_token_details") or {}).get("cache_read", 0) for r in reports
+        ),
     )
 
 

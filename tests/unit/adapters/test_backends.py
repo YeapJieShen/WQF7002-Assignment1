@@ -213,6 +213,9 @@ class _Engine:
     def count(self, _text: str, /) -> int:
         return 0
 
+    def cached(self, _prompt: str, /) -> int:
+        return 0
+
     def generate(self, _prompt: str, /) -> Iterator[str]:
         yield ""
 
