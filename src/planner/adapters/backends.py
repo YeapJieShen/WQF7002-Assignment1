@@ -15,7 +15,6 @@ import gradio as gr
 import openai
 
 from planner.adapters import zerogpu
-from planner.adapters.config import DUMMY_API_KEY
 from planner.adapters.endpoint_guard import (
     BlockedEndpointError,
     check_url,
@@ -92,8 +91,7 @@ class AppBackend:
                 **loggable(custom.base_url),
             )
             raise
-        if (key := custom.api_key.get_secret_value()) != DUMMY_API_KEY:
-            register_secret(key)  # so no log line can ever carry it
+        register_secret(custom.api_key.get_secret_value())  # so no log line can ever carry it
         guarded = not self.allow_private
         return _Redacting(
             client(
@@ -184,8 +182,11 @@ class _Redacting:
 def build_backend(settings: Settings) -> AppBackend:
     """Build the backend `settings.backend` names.
 
-    "zerogpu" loads the model onto the GPU, so call this once while the app starts.
+    "zerogpu" loads the model onto the GPU, so call this once while the app starts. The operator's
+    API keys are registered with the logs for the life of the process.
     """
+    for endpoint in settings.llm_endpoints:
+        register_secret(endpoint.api_key.get_secret_value())
     if settings.backend == "zerogpu":
         chat = zerogpu.TemplateChat(
             engine=zerogpu.load_engine(settings),

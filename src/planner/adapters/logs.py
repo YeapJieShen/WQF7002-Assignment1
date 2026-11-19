@@ -19,19 +19,25 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
-from collections import deque
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final, Literal, TextIO
+from urllib.parse import quote, quote_plus
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 ROOT: Final = "planner"
 REDACTED: Final = "[secret]"
-# Keys of the most recent custom endpoints; older ones have long since left the logs' window.
-_SECRETS: Final[deque[str]] = deque(maxlen=256)
+# Shorter values are placeholders such as the "ollama" key; scrubbing them would mangle ordinary
+# words in the logs, while a real API key is far longer.
+MIN_SECRET_LEN: Final = 8
+# Secret -> number of owners (tabs, operator settings) still using it. A secret is scrubbed for as
+# long as it has an owner and is never evicted for being old; `forget_secret` releases one owner.
+_SECRETS: Final[dict[str, int]] = {}
+_SECRETS_LOCK: Final = threading.Lock()
 _TURN: ContextVar[str | None] = ContextVar("planner_turn", default=None)
 _SESSION: ContextVar[str | None] = ContextVar("planner_session", default=None)
 _HANDLER_MARK: Final = "_planner_handler"
@@ -63,16 +69,52 @@ def session_hash(session_id: str) -> str:
 
 
 def register_secret(secret: str) -> None:
-    """Make every later log line replace `secret` with a marker."""
-    if secret and secret not in _SECRETS:
-        _SECRETS.append(secret)
+    """Make every later log line replace `secret` with a marker, until each owner forgets it.
+
+    Values shorter than `MIN_SECRET_LEN` are ignored: they are placeholders, not keys.
+    """
+    if len(secret) >= MIN_SECRET_LEN:
+        with _SECRETS_LOCK:
+            _SECRETS[secret] = _SECRETS.get(secret, 0) + 1
+
+
+def forget_secret(secret: str) -> None:
+    """Release one owner of `secret`; it stops being scrubbed once no owner is left."""
+    with _SECRETS_LOCK:
+        if (owners := _SECRETS.get(secret, 0)) > 1:
+            _SECRETS[secret] = owners - 1
+        else:
+            _SECRETS.pop(secret, None)
+
+
+def _spellings(secret: str) -> set[str]:
+    """Return the ways `secret` can appear in a line: as is, JSON-escaped, URL-encoded."""
+    return {secret, json.dumps(secret)[1:-1], quote(secret, safe=""), quote_plus(secret)}
 
 
 def scrub(text: str) -> str:
-    """Return `text` without any registered secret."""
-    for secret in _SECRETS:
-        text = text.replace(secret, REDACTED)
+    """Return `text` without any registered secret, in any of its spellings."""
+    with _SECRETS_LOCK:
+        secrets = list(_SECRETS)
+    # Longest first, so a secret that contains another is not left half replaced.
+    for spelling in sorted({v for s in secrets for v in _spellings(s)}, key=len, reverse=True):
+        text = text.replace(spelling, REDACTED)
     return text
+
+
+def _clean(value: object) -> object:
+    """Return `value` with every string in it scrubbed; objects become their scrubbed `str`."""
+    match value:
+        case str():
+            return scrub(value)
+        case bool() | int() | float() | None:
+            return value
+        case dict():
+            return {scrub(str(k)): _clean(v) for k, v in value.items()}
+        case list() | tuple() | set() | frozenset():
+            return [_clean(v) for v in value]
+        case _:
+            return scrub(str(value))
 
 
 def activate(turn_id: str, session: str) -> None:
@@ -135,7 +177,11 @@ class JsonFormatter(logging.Formatter):
         }
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
-        return scrub(json.dumps(payload, default=str))
+        if record.stack_info:
+            payload["stack"] = self.formatStack(record.stack_info)
+        # Scrub the values first: once serialised, a key with a quote, backslash or non-ASCII
+        # character no longer matches. The final scrub catches whatever the first one cannot see.
+        return scrub(json.dumps(_clean(payload)))
 
 
 class TextFormatter(logging.Formatter):
@@ -146,7 +192,7 @@ class TextFormatter(logging.Formatter):
         super().__init__("%(asctime)s %(levelname)-7s %(name)s %(message)s")
 
     def format(self, record: logging.LogRecord) -> str:
-        """Return `record` as one scrubbed text line."""
+        """Return `record` as one scrubbed text line, exception and stack included."""
         line = super().format(record)
         extras = " ".join(f"{k}={v}" for k, v in _fields(record).items())
         return scrub(f"{line} {extras}" if extras else line)

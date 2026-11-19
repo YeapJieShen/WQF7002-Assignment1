@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Final, cast, get_args
 import gradio as gr
 from pydantic import SecretStr
 
-from planner.adapters.chat import History, Tab, new_tab, stream_turn, use_endpoint
+from planner.adapters.chat import History, Tab, new_tab, release_endpoint, stream_turn, use_endpoint
 from planner.adapters.config import DUMMY_API_KEY, Endpoint
 from planner.adapters.data import PERSONA, load_base, load_persona, load_rules
 from planner.adapters.endpoint_guard import loggable
@@ -302,6 +302,7 @@ class Controller:
         """Log that Gradio dropped a tab's state: its time-to-live ran out or the tab went away."""
         if tab is not None:
             emit(LOG, "session_end", session=tab.session.log_id, turns=len(tab.turns))
+            release_endpoint(tab.custom)
 
     def _restart(self, old: Tab | None, state: SessionState) -> tuple[Any, ...]:
         custom = old.custom if old else None

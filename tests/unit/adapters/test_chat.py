@@ -127,3 +127,22 @@ def test_switching_endpoint_changes_the_model_mid_conversation(
     assert tab.custom == mine
     use_endpoint(tab, backend, None)
     assert tab.custom is None
+
+
+def test_releasing_an_endpoint_stops_scrubbing_its_key_only_when_unused() -> None:
+    from pydantic import SecretStr  # noqa: PLC0415
+
+    from planner.adapters import logs  # noqa: PLC0415
+    from planner.adapters.chat import release_endpoint  # noqa: PLC0415
+
+    mine = Endpoint(
+        name="c", base_url="https://x.test/v1", model="m", api_key=SecretStr("sk-release-me-123")
+    )
+    logs._SECRETS.clear()
+    logs.register_secret("sk-release-me-123")
+    logs.register_secret("sk-release-me-123")
+    release_endpoint(None)
+    release_endpoint(mine)
+    assert logs.scrub("sk-release-me-123") == logs.REDACTED
+    release_endpoint(mine)
+    assert logs.scrub("sk-release-me-123") == "sk-release-me-123"

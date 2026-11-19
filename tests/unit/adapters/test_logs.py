@@ -2,6 +2,7 @@ import io
 import json
 import logging
 from collections.abc import Iterator
+from urllib.parse import quote, quote_plus
 
 import pytest
 
@@ -130,3 +131,57 @@ def test_settings_summary_has_no_keys() -> None:
     summary = Settings().summary()
     assert "api_key" not in json.dumps(summary)
     assert summary["llm_endpoints"][0]["host"] == "localhost"
+
+
+AWKWARD_KEYS = [r'sk-A"B\C-é9', "sk-plain-0123456789", "sk-sp ace&x=1/é"]
+
+
+@pytest.mark.parametrize("key", AWKWARD_KEYS)
+@pytest.mark.parametrize("fmt", ["json", "text"])
+def test_awkward_keys_are_scrubbed_in_every_spelling(key: str, fmt: str) -> None:
+    logs.register_secret(key)
+    out = io.StringIO()
+    logs.configure_logging("INFO", fmt, out)  # type: ignore[arg-type]
+    spellings = [key, quote(key, safe=""), quote_plus(key), json.dumps(key)]
+    try:
+        raise ValueError("; ".join(spellings))  # noqa: TRY301
+    except ValueError as exc:
+        logs.emit(
+            LOG, f"event {key}", level=logging.ERROR, exc_info=exc,
+            detail=key, nested={"k": [key, quote(key, safe="")]}, obj=ValueError(key),
+        )  # fmt: skip
+    text = out.getvalue()
+    for spelling in spellings:
+        assert spelling not in text
+    assert key not in text
+    assert json.dumps(key)[1:-1] not in text
+    assert logs.REDACTED in text
+
+
+def test_short_or_placeholder_keys_are_not_registered() -> None:
+    logs.register_secret("ollama")
+    logs.register_secret("")
+    assert not logs._SECRETS
+    assert logs.scrub("ollama is local") == "ollama is local"
+
+
+def test_a_secret_stays_scrubbed_until_every_owner_forgets_it() -> None:
+    for i in range(1000):  # far more than the old window: nothing is evicted
+        logs.register_secret(f"filler-key-{i:05d}")
+    logs.register_secret("sk-live-secret")
+    logs.register_secret("sk-live-secret")
+    assert logs.scrub("a sk-live-secret b") == f"a {logs.REDACTED} b"
+    logs.forget_secret("sk-live-secret")
+    assert logs.REDACTED in logs.scrub("sk-live-secret")
+    logs.forget_secret("sk-live-secret")
+    logs.forget_secret("sk-live-secret")  # forgetting twice is harmless
+    assert logs.scrub("sk-live-secret") == "sk-live-secret"
+    assert logs.REDACTED in logs.scrub("filler-key-00000")
+
+
+def test_stack_info_is_scrubbed_too() -> None:
+    logs.register_secret("sk-in-the-stack-1")
+    out = io.StringIO()
+    logs.configure_logging("INFO", "json", out)
+    LOG.error("with stack", stack_info=True)
+    assert "stack" in lines(out)[0]
