@@ -66,12 +66,14 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["ALL"]
+# CPY001 is a preview rule: enable that one code, not preview rules in general.
+extend-select = ["CPY001"]
+explicit-preview-rules = true
 ignore = [
     "D203",     # conflicts with D211
     "D213",     # conflicts with D212
     "COM812",   # conflicts with the formatter
     "ISC001",   # conflicts with the formatter
-    "CPY",      # no copyright headers; LICENSE covers the project
     "EM",       # exception message variables add noise for pydantic validator errors
     "TRY003",   # messages are written inline at the raise; one class per message adds noise
 ]
@@ -88,6 +90,9 @@ ignore = [
 ]
 "scripts/**" = ["INP001", "T201"]  # standalone scripts run by path and print progress
 "space/**" = ["INP001"]  # the Space's entry point, run by path
+
+[tool.ruff.lint.flake8-copyright]
+notice-rgx = "(?i)SPDX-FileCopyrightText:\\s+\\d{4}"
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = [
