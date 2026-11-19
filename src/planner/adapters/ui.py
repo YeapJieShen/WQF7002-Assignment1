@@ -9,6 +9,7 @@ the run history, since the key only ever reaches the private `connect` handler.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import tempfile
 from datetime import datetime
@@ -21,6 +22,8 @@ from pydantic import SecretStr
 from planner.adapters.chat import History, Tab, new_tab, stream_turn, use_endpoint
 from planner.adapters.config import DUMMY_API_KEY, Endpoint
 from planner.adapters.data import PERSONA, load_base, load_persona, load_rules
+from planner.adapters.endpoint_guard import loggable
+from planner.adapters.logs import emit
 from planner.adapters.transcript import transcript
 from planner.adapters.views import (
     PLACE_HEADERS,
@@ -46,6 +49,7 @@ if TYPE_CHECKING:
     from planner.adapters.config import Settings
     from planner.domain.models import BaseData
 
+LOG = logging.getLogger("planner.ui")
 START_PLACE: Final = "home"
 BOX_ID: Final = "message-box"
 # Marks a message as pasted: the page prepends it on submit and `chat` strips it.
@@ -270,6 +274,14 @@ class Controller:
         file = Path(path or "")
         # Gradio's upload cap rejects most oversized files before this runs; this names the sizes.
         if file.is_file() and (size := file.stat().st_size) > self.settings.import_max_bytes:
+            emit(
+                LOG,
+                "limit_hit",
+                level=logging.WARNING,
+                limit="import_max_bytes",
+                actual=size,
+                allowed=self.settings.import_max_bytes,
+            )
             raise gr.Error(
                 FILE_TOO_LARGE.format(
                     actual=size_text(size), limit=size_text(self.settings.import_max_bytes)
@@ -281,8 +293,15 @@ class Controller:
                 msg = f"unknown place: {state.location}"
                 raise ValueError(msg)  # noqa: TRY301 - one message for every way a file is bad
         except (OSError, ValueError) as exc:
+            emit(LOG, "import_failed", level=logging.WARNING, error_class=type(exc).__name__)
             raise gr.Error(f"Could not import that file: {exc}") from exc
+        emit(LOG, "session_import", size_bytes=file.stat().st_size, tasks=len(state.tasks))
         return self._restart(tab, state)
+
+    def expired(self, tab: Tab | None) -> None:
+        """Log that Gradio dropped a tab's state: its time-to-live ran out or the tab went away."""
+        if tab is not None:
+            emit(LOG, "session_end", session=tab.session.log_id, turns=len(tab.turns))
 
     def _restart(self, old: Tab | None, state: SessionState) -> tuple[Any, ...]:
         custom = old.custom if old else None
@@ -328,7 +347,15 @@ class Controller:
         except ValueError as exc:
             raise gr.Error(str(exc)) from exc
         if custom is None:
+            emit(LOG, "endpoint_change", backend="default")
             return "Using the default model.", ""
+        emit(
+            LOG,
+            "endpoint_change",
+            backend="custom",
+            model=custom.model,
+            **loggable(custom.base_url),
+        )
         return f"Using {custom.model} at {custom.base_url}.", ""
 
     def pace_changed(self, tab: Tab | None, *values: Any) -> pd.DataFrame:  # noqa: ANN401
@@ -374,6 +401,14 @@ class Controller:
             yield gr.skip(), gr.skip(), live
             return
         if len(text) > self.settings.message_max_chars:
+            emit(
+                LOG,
+                "limit_hit",
+                level=logging.WARNING,
+                limit="message_max_chars",
+                actual=len(text),
+                allowed=self.settings.message_max_chars,
+            )
             note = MESSAGE_TOO_LONG.format(actual=len(text), limit=self.settings.message_max_chars)
             yield [*history, {"role": "assistant", "content": note}], gr.skip(), live
             return
@@ -428,7 +463,9 @@ class Controller:
     def export_state(self, tab: Tab | None) -> Any:  # noqa: ANN401 - a component update
         """Write the session's state to a JSON file and offer it for download."""
         live = _live(tab)
-        path = _write("session_", live.session.state.model_dump_json(indent=2))
+        content = live.session.state.model_dump_json(indent=2)
+        path = _write("session_", content)
+        emit(LOG, "session_export", size_bytes=Path(path).stat().st_size)
         return gr.update(value=path, visible=True)
 
     def export_transcript(self, tab: Tab | None) -> Any:  # noqa: ANN401 - a component update
@@ -441,7 +478,11 @@ class Controller:
             real_clock=live.real_clock,
             exported_at=self.clock(),
         )
-        path = _write("transcript_", record.model_dump_json(indent=2))
+        content = record.model_dump_json(indent=2)
+        path = _write("transcript_", content)
+        emit(
+            LOG, "transcript_download", size_bytes=Path(path).stat().st_size, turns=len(live.turns)
+        )
         return gr.update(value=path, visible=True)
 
 
@@ -452,7 +493,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
     ctl = controller or Controller(backend, settings)
     app = gr.Blocks(title="Planning delegate")
     with app:
-        tab = gr.State(time_to_live=settings.state_ttl_s)
+        tab = gr.State(time_to_live=settings.state_ttl_s, delete_callback=ctl.expired)
         with gr.Row(equal_height=True, elem_classes="header"):
             gr.Markdown("# Planning delegate", min_width=220)
             chip = gr.Markdown(elem_classes="chip")
