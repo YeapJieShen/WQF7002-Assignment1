@@ -14,7 +14,7 @@ from planner.adapters import zerogpu
 from planner.adapters.config import Settings
 from planner.adapters.llm import tool_specs
 from planner.adapters.session import Done, Reply, Session, Stage, Token, Usage
-from planner.adapters.zerogpu import TemplateChat, to_chat
+from planner.adapters.zerogpu import PrefixCache, TemplateChat, to_chat
 from planner.domain.models import BaseData, SessionState
 
 SETTINGS = Settings(_env_file=None)
@@ -267,3 +267,58 @@ def test_other_markers_are_honoured() -> None:
     assert reply.tool_calls[0]["name"] == "add_task"
     assert zerogpu.visible_end("Ok [[ca", final=False, call_open="[[call]]") == 3
     assert zerogpu.visible_end("Ok " + marked, final=True, call_open="[[call]]") == 3
+
+
+# --- PrefixCache ---------------------------------------------------------------------------
+
+END = "<end>"
+
+
+def prefix_cache(builds: list[str]) -> PrefixCache:
+    """Tokens are characters; a build records the head and returns a mutable list."""
+
+    def build(head: str) -> list[str]:
+        builds.append(head)
+        return list(head)
+
+    return PrefixCache(END, lambda text: [ord(c) for c in text], build)
+
+
+def ids(text: str) -> list[int]:
+    return [ord(c) for c in text]
+
+
+def test_prefix_cache_builds_the_first_turn_once_and_hands_out_copies() -> None:
+    builds: list[str] = []
+    cache = prefix_cache(builds)
+    first = cache.lookup(f"rules{END}question one", ids(f"rules{END}question one"))
+    assert first == list(f"rules{END}")
+    first.append("grown by generate")  # the model appends to the cache it is given
+    second = cache.lookup(f"rules{END}question two", ids(f"rules{END}question two"))
+    assert second == list(f"rules{END}")
+    assert builds == [f"rules{END}"]
+
+
+def test_prefix_cache_rebuilds_when_the_first_turn_changes() -> None:
+    builds: list[str] = []
+    cache = prefix_cache(builds)
+    cache.lookup(f"one{END}x", ids(f"one{END}x"))
+    cache.lookup(f"two{END}x", ids(f"two{END}x"))
+    assert builds == [f"one{END}", f"two{END}"]
+
+
+def test_prefix_cache_is_skipped_without_a_first_turn() -> None:
+    builds: list[str] = []
+    assert prefix_cache(builds).lookup("no turn end here", ids("no turn end here")) is None
+    assert builds == []
+
+
+def test_prefix_cache_is_skipped_when_the_tokens_do_not_start_with_the_turn() -> None:
+    builds: list[str] = []
+    cache = prefix_cache(builds)
+    # Fresh head: tokenizing it alone differs from how the whole prompt was tokenized.
+    assert cache.lookup(f"rules{END}x", ids("other text entirely")) is None
+    assert builds == []
+    # Cached head: the same text, but tokens that do not match the cached ones.
+    assert cache.lookup(f"rules{END}x", ids(f"rules{END}x")) is not None
+    assert cache.lookup(f"rules{END}x", ids("other text entirely")) is None

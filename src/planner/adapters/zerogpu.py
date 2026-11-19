@@ -15,10 +15,12 @@ its lenient partial-JSON parser, which accepts truncated JSON and drops the pars
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
 from itertools import chain
+from threading import Lock
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 from uuid import uuid4
 
@@ -42,7 +44,7 @@ from planner.adapters.logs import elapsed_ms, emit
 LOG = logging.getLogger("planner.backends")
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from langchain_core.callbacks import CallbackManagerForLLMRun
 
@@ -213,6 +215,54 @@ class TemplateChat(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
+class PrefixCache:
+    """The attention cache of the start of the prompt that never changes, computed once.
+
+    Every generation starts with the same first turn (the rules and the tool schemas, about
+    2,000 tokens). Prefilling that turn again each time costs seconds and, on a 12 GB card,
+    pushes the one big prefill past the memory the GPU has, which then pages and stalls for
+    about ten seconds. With the first turn cached, only what follows it is prefilled.
+
+    Attributes:
+        end_marker: Text the chat template puts after every turn; the first turn ends at its
+            first occurrence in the prompt.
+    """
+
+    def __init__(  # noqa: D107 - the class docstring says it all
+        self,
+        end_marker: str,
+        tokenize: Callable[[str], list[int]],
+        build: Callable[[str], Any],
+    ) -> None:
+        self.end_marker = end_marker
+        self._tokenize = tokenize
+        self._build = build
+        self._lock = Lock()
+        self._head: str | None = None
+        self._head_ids: list[int] = []
+        self._cache: Any = None
+
+    def lookup(self, prompt: str, ids: Sequence[int]) -> Any | None:  # noqa: ANN401
+        """Return a private copy of the cache of the prompt's first turn, or None.
+
+        None means "prefill everything": the prompt has no first turn, or tokenizing the turn on
+        its own does not give the start of `ids`, so the cached tokens would not be the prompt's.
+        """
+        cut = prompt.find(self.end_marker)
+        if cut < 0:
+            return None
+        head = prompt[: cut + len(self.end_marker)]
+        with self._lock:
+            if head != self._head:
+                head_ids = self._tokenize(head)
+                if list(ids[: len(head_ids)]) != head_ids:
+                    return None
+                self._cache, self._head, self._head_ids = self._build(head), head, head_ids
+            elif list(ids[: len(self._head_ids)]) != self._head_ids:
+                return None
+            return copy.deepcopy(self._cache)  # generate appends to the cache it is given
+
+
 class _Transformers:  # pragma: no cover - needs the model weights and a GPU
     def __init__(self, tokenizer: Any, generate: Any) -> None:  # noqa: ANN401 - untyped libraries
         self._tokenizer = tokenizer
@@ -241,6 +291,9 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
     from transformers import (  # noqa: PLC0415 - optional, heavy
         AutoModelForCausalLM,
         AutoTokenizer,
+        DynamicCache,
+        StoppingCriteriaList,
+        StopStringCriteria,
         TextIteratorStreamer,
     )
 
@@ -251,6 +304,23 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
     # as its first argument. A type: ignore would instead fail CI, where transformers is absent.
     loaded: Any = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype="auto")
     model = loaded.to("cuda")
+    # Built once: `stop_strings=` makes every generate call rebuild this (about a second).
+    stops = StoppingCriteriaList([StopStringCriteria(tokenizer, [settings.tool_call_close])])
+    # What the template appends to a turn, found by rendering a probe turn.
+    probe = tokenizer.apply_chat_template([{"role": "system", "content": "x"}], tokenize=False)
+    end_marker = str(probe).partition("x")[2]
+
+    def tokenize(text: str) -> list[int]:
+        return list(tokenizer(text, add_special_tokens=False).input_ids)
+
+    def build(head: str) -> Any:  # noqa: ANN401 - a transformers cache
+        cache = DynamicCache(config=model.config)
+        inputs = tokenizer(head, return_tensors="pt", add_special_tokens=False).to("cuda")
+        # Generating one token fills the cache with exactly the head: that token is never fed back.
+        model.generate(**inputs, past_key_values=cache, max_new_tokens=1, do_sample=False)
+        return cache
+
+    prefix = PrefixCache(end_marker, tokenize, build)
 
     @spaces.GPU(duration=settings.zerogpu_gpu_duration_s)  # type: ignore[untyped-decorator]  # spaces is untyped
     def generate(prompt: str) -> Iterator[str]:
@@ -260,9 +330,11 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
             **inputs,
             "streamer": streamer,
             "max_new_tokens": settings.zerogpu_max_new_tokens,
-            "stop_strings": [settings.tool_call_close],
-            "tokenizer": tokenizer,
+            "stopping_criteria": stops,
         }
+        cached = prefix.lookup(prompt, inputs["input_ids"][0].tolist())
+        if cached is not None:
+            options["past_key_values"] = cached
         Thread(target=model.generate, kwargs=options, daemon=True).start()
         yield from streamer
 
