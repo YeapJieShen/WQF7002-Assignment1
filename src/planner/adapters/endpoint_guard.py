@@ -11,6 +11,7 @@ Operator endpoints from `Settings` are trusted and do not pass through here.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from typing import Final
@@ -62,8 +63,8 @@ def check_url(url: str, *, allow_private: bool) -> None:
     check_host(parts.hostname, HTTPS_PORT)
 
 
-def check_host(host: str, port: int) -> None:
-    """Reject `host` if any address it resolves to is not on the public internet.
+def check_host(host: str, port: int) -> str:
+    """Return a public address for `host`, rejecting it if any address it resolves to is not.
 
     Raises:
         BlockedEndpointError: If the name does not resolve or resolves to a forbidden address.
@@ -86,16 +87,43 @@ def check_host(host: str, port: int) -> None:
             or not ip.is_global
         ):
             raise BlockedEndpointError(INSIDE.format(ip=ip))
+    return str(found[0][4][0]).split("%")[0]
+
+
+def _pin(request: httpx2.Request) -> None:
+    """Vet the destination, then point the request at the address that was vetted.
+
+    The connection goes to that IP, so a second DNS lookup cannot send it elsewhere. The Host
+    header is already the original name, and `sni_hostname` makes TLS use (and verify the
+    certificate against) the original name rather than the IP.
+    """
+    host = request.url.host
+    ip = check_host(host, request.url.port or HTTPS_PORT)
+    request.extensions["sni_hostname"] = host
+    request.url = request.url.copy_with(host=ip)
 
 
 class _VettingTransport(httpx2.HTTPTransport):
-    """An HTTP transport that vets the destination again before every request."""
+    """An HTTP transport that vets and pins the destination before every request."""
 
     def handle_request(self, request: httpx2.Request) -> httpx2.Response:
-        check_host(request.url.host, request.url.port or HTTPS_PORT)
+        _pin(request)
         return super().handle_request(request)
+
+
+class _VettingAsyncTransport(httpx2.AsyncHTTPTransport):
+    """The async counterpart of `_VettingTransport`."""
+
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
+        await asyncio.to_thread(_pin, request)  # the lookup blocks
+        return await super().handle_async_request(request)
 
 
 def guarded_client() -> httpx2.Client:
     """Return an HTTP client for a visitor's endpoint: no redirects, vetted on every request."""
     return httpx2.Client(transport=_VettingTransport(), follow_redirects=False)
+
+
+def guarded_async_client() -> httpx2.AsyncClient:
+    """Return the async twin of `guarded_client`."""
+    return httpx2.AsyncClient(transport=_VettingAsyncTransport(), follow_redirects=False)

@@ -1,3 +1,4 @@
+import asyncio
 import socket
 
 import httpx2
@@ -9,7 +10,12 @@ from pydantic import SecretStr
 
 from planner.adapters.backends import AppBackend, ProviderError, _Redacting, build_backend
 from planner.adapters.config import Endpoint, Settings
-from planner.adapters.endpoint_guard import BlockedEndpointError, check_url, guarded_client
+from planner.adapters.endpoint_guard import (
+    BlockedEndpointError,
+    check_url,
+    guarded_async_client,
+    guarded_client,
+)
 
 from .conftest import PUBLIC_IP, answer
 
@@ -132,7 +138,7 @@ def test_a_redirect_is_not_followed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle)
     response = guarded_client().get("https://api.example.com/v1")
     assert response.status_code == 302
-    assert seen == ["https://api.example.com/v1"]
+    assert seen == [f"https://{PUBLIC_IP}/v1"]  # pinned, and the 302 was not chased
 
 
 def test_a_name_that_turns_private_after_entry_is_rejected_at_request_time(
@@ -195,3 +201,66 @@ def test_a_long_provider_error_is_cut_and_the_key_stays_out() -> None:
     assert len(text) == 303
     assert text.endswith("...")
     assert KEY not in text
+
+
+# --- pinning and async ---------------------------------------------------------------------
+
+
+def test_the_connection_is_pinned_to_the_vetted_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[httpx2.Request] = []
+
+    def handle(_self: object, request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200)
+
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle)
+    guarded_client().get("https://api.example.com/v1")
+    (request,) = seen
+    assert request.url.host == PUBLIC_IP
+    assert request.headers["host"] == "api.example.com"
+    assert request.extensions["sni_hostname"] == "api.example.com"  # certificate checked by name
+
+
+def test_an_ipv6_address_is_pinned_in_brackets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(socket, "getaddrinfo", answer("2606:4700:4700::1111"))
+    seen: list[httpx2.Request] = []
+
+    def handle(_self: object, request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200)
+
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle)
+    guarded_client().get("https://api.example.com/v1")
+    assert seen[0].url.host == "2606:4700:4700::1111"
+    assert seen[0].headers["host"] == "api.example.com"
+
+
+def test_the_async_client_is_vetted_pinned_and_does_not_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[httpx2.Request] = []
+
+    async def handle(_self: object, request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(302, headers={"Location": "https://10.0.0.1/secret"})
+
+    monkeypatch.setattr(httpx2.AsyncHTTPTransport, "handle_async_request", handle)
+    response = asyncio.run(guarded_async_client().get("https://api.example.com/v1"))
+    assert response.status_code == 302
+    assert [r.url.host for r in seen] == [PUBLIC_IP]
+    assert seen[0].extensions["sni_hostname"] == "api.example.com"
+
+
+def test_the_async_client_refuses_a_name_that_turned_private(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(socket, "getaddrinfo", answer("169.254.169.254"))
+    with pytest.raises(BlockedEndpointError):
+        asyncio.run(guarded_async_client().get("https://rebind.example.com/v1"))
+
+
+def test_a_custom_endpoint_model_gets_both_guarded_clients() -> None:
+    model = backend().model(endpoint("https://api.example.com/v1"))
+    chat = model.chat.bound  # type: ignore[attr-defined]
+    assert isinstance(chat.root_client._client._transport, httpx2.HTTPTransport)
+    assert type(chat.root_async_client._client._transport).__name__ == "_VettingAsyncTransport"

@@ -14,7 +14,12 @@ import gradio as gr
 import openai
 
 from planner.adapters import zerogpu
-from planner.adapters.endpoint_guard import BlockedEndpointError, check_url, guarded_client
+from planner.adapters.endpoint_guard import (
+    BlockedEndpointError,
+    check_url,
+    guarded_async_client,
+    guarded_client,
+)
 from planner.adapters.llm import BACKEND_ERRORS, build_model, client
 
 if TYPE_CHECKING:
@@ -66,9 +71,13 @@ class AppBackend:
         if custom is None:
             return self.default
         check_url(custom.base_url, allow_private=self.allow_private)
-        http = None if self.allow_private else guarded_client()
+        guarded = not self.allow_private
         return _Redacting(
-            client(custom, http),
+            client(
+                custom,
+                guarded_client() if guarded else None,
+                guarded_async_client() if guarded else None,
+            ),
             custom.api_key.get_secret_value(),
             custom.timeout_s,
             self.error_max_chars,
