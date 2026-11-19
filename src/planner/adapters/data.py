@@ -56,14 +56,14 @@ def load_persona(name: str) -> SessionState:
 
 
 def persona_label(state: SessionState) -> str:
-    """Name a persona by its simulated start, such as "Wednesday 28 Oct, 15:40"."""
-    return f"{state.now:%A} {state.now.day} {state.now:%b, %H:%M}"
+    """Name a persona by its simulated start, such as "Wed 28 Oct, 15:40"."""
+    return f"{state.now:%a} {state.now.day} {state.now:%b, %H:%M}"
 
 
 def persona_choices() -> list[tuple[str, str]]:
     """Every sample persona as a (label, name) pair for a dropdown, numbered by start time."""
     loaded = sorted(((load_persona(n), n) for n in list_personas()), key=lambda p: p[0].now)
     return [
-        (f"Persona {i}: {persona_label(state)}", name)
+        (f"Persona {i} · {persona_label(state)}", name)
         for i, (state, name) in enumerate(loaded, start=1)
     ]

@@ -147,6 +147,8 @@ CSS: Final = """
 .confirm-card { border: 1px solid var(--primary-500) !important; }
 .confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
 .confirm-card * { border-color: transparent; }
+.persona input { padding-right: var(--size-8); text-overflow: ellipsis; overflow: hidden;
+  white-space: nowrap; }
 .confirm-card button.secondary { background: transparent; color: var(--primary-500);
   border: 1px solid var(--primary-500); }
 .help { display: flex; justify-content: space-between; align-items: center; }
@@ -674,6 +676,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 container=False,
                 show_label=False,
                 filterable=False,
+                elem_classes="persona",
             )
             with gr.Group(visible=False) as own:
                 gr.HTML(HELP_HTML)
