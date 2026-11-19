@@ -190,6 +190,13 @@ def test_the_pace_chart_plans_the_sample_task_day_by_day(
     assert pace_chart(tight, base)["minutes"].sum() > 120
 
 
+def test_the_pace_chart_ignores_the_time_of_day(state: SessionState, base: BaseData) -> None:
+    morning = state.model_copy(update={"now": datetime(2026, 11, 19, 8, 5)})
+    evening = state.model_copy(update={"now": datetime(2026, 11, 19, 21, 40)})
+    assert pace_chart(morning, base).equals(pace_chart(evening, base))
+    assert pace_figure(morning, base, "#336699") == pace_figure(evening, base, "#336699")
+
+
 def test_a_rejection_keeps_its_reason_outside_the_italics() -> None:
     message = call_message([record("check", "rejected: unknown place")])
     assert "- Check: *Rejected* — unknown place" in message["content"]

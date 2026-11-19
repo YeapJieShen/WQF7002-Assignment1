@@ -213,9 +213,12 @@ def pace_chart(state: SessionState, base: BaseData) -> pd.DataFrame:
     """Plan minutes per day, from today to its deadline, for a sample task under this pace.
 
     The domain scheduler plans each day for a session holding only what is left of the sample
-    task, so the chart shows what `plan_day` would do with these pace settings.
+    task, so the chart shows what `plan_day` would do with these pace settings. The clock is
+    pinned to the start of the session's day, so a clock that keeps moving never reshapes the
+    curve: only the pace settings and the date do.
     """
     today = state.now.date()
+    state = state.model_copy(update={"now": datetime.combine(today, time.min)})
     days = [today + timedelta(days=i) for i in range(SAMPLE_DAYS + 1)]
     deadline = datetime.combine(days[-1], time(23, 59))
     left = SAMPLE_MIN
