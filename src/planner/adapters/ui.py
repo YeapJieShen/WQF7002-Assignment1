@@ -109,12 +109,12 @@ THEME: Final = gr.themes.Soft(
 ).set(block_label_background_fill="transparent", block_title_background_fill="transparent")
 CSS: Final = """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
-.chip { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
-  padding: var(--spacing-sm) var(--spacing-xl); background: var(--background-fill-secondary);
-  width: fit-content; }
-.chip p { margin: 0; }
-.header { flex-wrap: wrap; }
+.header { flex-wrap: wrap; align-items: center; }
 .header > div:first-child { flex: 0 0 auto !important; min-width: 15rem !important; }
+.toolbar { justify-content: flex-end; flex-wrap: nowrap; }
+.chip { border: 1px solid var(--border-color-primary); border-radius: var(--radius-xl);
+  padding: var(--spacing-sm) var(--spacing-xl); width: fit-content; flex: 0 0 auto !important; }
+.chip p { margin: 0; }
 .badge { float: right; border-radius: var(--radius-sm); padding: 0 var(--spacing-md);
   color: white; font-size: var(--text-sm); }
 .badge.ok { background: var(--color-green-500); }
@@ -530,14 +530,15 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
     app = gr.Blocks(title="Planning delegate")
     with app:
         tab = gr.State(time_to_live=settings.state_ttl_s, delete_callback=ctl.expired)
-        with gr.Row(equal_height=True, elem_classes="header"):
+        with gr.Row(elem_classes="header"):
             gr.Markdown("# Planning delegate", min_width=220)
-            chip = gr.Markdown(elem_classes="chip")
-            demo_btn = gr.Button("Try a demo", size="sm", min_width=100)
-            export_btn = gr.Button("💾 Export", size="sm", min_width=90)
-            import_btn = gr.UploadButton("📂 Import", file_types=[".json"], size="sm", min_width=90)
-            transcript_btn = gr.Button("📝 Transcript", size="sm", min_width=100)
-            settings_btn = gr.Button("⚙", size="sm", min_width=40)
+            chip = gr.Markdown(elem_classes="chip", scale=0, min_width=0, container=False)
+            with gr.Row(elem_classes="toolbar"):
+                export_btn = gr.Button("Export", size="sm", scale=0, min_width=90)
+                import_btn = gr.UploadButton(
+                    "Import", file_types=[".json"], size="sm", scale=0, min_width=90
+                )
+                transcript_btn = gr.Button("Transcript", size="sm", scale=0, min_width=90)
         download = gr.File(label="Download", visible=False)
         with gr.Tabs():
             with gr.Tab("Chat"):
@@ -616,7 +617,9 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     ]
                 reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
                 chart = gr.Plot(label="Pace", show_label=False)
-        with gr.Sidebar(label="Model", open=False, position="right") as sidebar:
+        with gr.Sidebar(label="Settings", open=False, position="right"):
+            gr.Markdown("### Session")
+            demo_btn = gr.Button("Try a demo", size="sm")
             gr.Markdown("### Model")
             choice = gr.Radio(
                 [("Default model", "default"), ("My own endpoint", "custom")],
@@ -649,10 +652,6 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         import_btn.upload(ctl.import_state, [tab, import_btn], reset, api_visibility="private")
         export_btn.click(ctl.export_state, tab, download, api_visibility="private")
         transcript_btn.click(ctl.export_transcript, tab, download, api_visibility="private")
-        # Not queued: opening the sidebar must never wait behind, or be refused by, a full queue.
-        settings_btn.click(
-            lambda: gr.Sidebar(open=True), None, sidebar, api_visibility="private", queue=False
-        )
         choice.change(
             lambda c: gr.update(visible=c == "custom"), choice, own, api_visibility="private"
         )

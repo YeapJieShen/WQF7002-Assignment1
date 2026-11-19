@@ -411,10 +411,19 @@ def test_a_custom_endpoint_gets_the_custom_timeout() -> None:
     assert tab.custom.timeout_s == 12
 
 
-def test_the_sidebar_toggle_bypasses_the_queue() -> None:
+def _caption(block: Any) -> str:
+    return str(getattr(block, "value", None) or getattr(block, "label", ""))
+
+
+def test_the_toolbar_has_the_file_buttons_and_the_demo_lives_in_the_sidebar() -> None:
     app = build_app(FakeBackend(ScriptedModel()), settings())
-    [toggle] = [f for f in app.fns.values() if f.name == "<lambda>" and f.queue is False]
-    assert toggle.api_visibility == "private"
+    blocks = list(app.blocks.values())
+    [sidebar] = [b for b in blocks if b.get_block_name() == "sidebar"]
+    assert "Try a demo" in {_caption(b) for b in blocks if b.parent is sidebar}
+    toolbar = {
+        _caption(b) for b in blocks if getattr(b.parent, "elem_classes", None) == ["toolbar"]
+    }
+    assert toolbar == {"Export", "Import", "Transcript"}
 
 
 def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
@@ -452,5 +461,5 @@ def test_the_weekday_limits_are_always_visible_with_one_reset_button() -> None:
     blocks = list(app.blocks.values())
     numbers = [getattr(b, "label", "") for b in blocks if b.get_block_name() == "number"]
     assert numbers[-7:] == [d.value.title() for d in Weekday]
-    assert not any(b.get_block_name() == "accordion" and "weekday" in str(b.label) for b in blocks)
+    assert not any(b.get_block_name() == "accordion" and "weekday" in _caption(b) for b in blocks)
     assert [getattr(b, "value", None) for b in blocks].count("Reset to defaults") == 1
