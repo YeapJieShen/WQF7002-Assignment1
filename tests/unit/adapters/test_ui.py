@@ -74,7 +74,7 @@ def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
     assert card["visible"] is False
     assert question == ""
     assert len(rest) == 13
-    assert len(rest[-1].data[0].x) == SAMPLE_DAYS + 1
+    assert len(rest[-1].data[1].x) == SAMPLE_DAYS + 1
 
 
 def test_try_a_demo_loads_the_persona_on_a_simulated_clock() -> None:
@@ -490,7 +490,7 @@ def test_reset_to_defaults_restores_every_pace_control_and_the_session() -> None
     *controls, chart = ctl.reset_pace(tab)
     assert tab.session.state.pace == Pace()
     assert tuple(controls) == pace_values(Pace())
-    assert len(chart.data[0].x) == SAMPLE_DAYS + 1
+    assert len(chart.data[1].x) == SAMPLE_DAYS + 1
 
 
 def test_the_weekday_limits_are_always_visible_with_one_reset_button() -> None:

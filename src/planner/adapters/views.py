@@ -5,6 +5,7 @@ Pure functions with no Gradio state, so tests check them directly.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -35,9 +36,13 @@ SAMPLE_DAYS: Final = 4
 """The Pace chart plans a SAMPLE_MIN-minute flexible task due SAMPLE_DAYS days after today."""
 EXAMPLES_SHOWN: Final = 3
 FILL_ALPHA: Final = 0.3
+"""How opaque the area under the Pace curve is."""
 EDGE_ALPHA: Final = 0.35
 """How opaque the edges of the Places graph are."""
-"""How opaque the area under the Pace curve is."""
+NODE_SIZE: Final = 32
+"""The diameter of a place on the Places graph, in pixels."""
+CURVE_STEPS: Final = 12
+"""Points drawn between two days on the Pace curve."""
 THINKING_WORDS: Final = (
     "Thinking…",
     "Planning…",
@@ -219,33 +224,88 @@ def pace_figure(state: SessionState, base: BaseData, color: str) -> go.Figure:
     """
     chart = pace_chart(state, base)
     red, green, blue = (int(color[i : i + 2], 16) for i in (1, 3, 5))
+    days = list(chart["day"])
+    minutes = [int(m) for m in chart["minutes"]]
+    curve = monotone_curve(minutes, CURVE_STEPS)
     figure = go.Figure(
-        go.Scatter(
-            x=chart["day"],
-            y=chart["minutes"],
-            mode="lines+markers",
-            line={"shape": "spline", "color": color},
-            fill="tozeroy",
-            fillcolor=f"rgba({red}, {green}, {blue}, {FILL_ALPHA})",
-            hovertemplate="%{x|%a %d %b}: %{y} min<extra></extra>",
-        )
+        [
+            go.Scatter(
+                x=[days[0] + timedelta(days=t) for t, _ in curve],
+                y=[v for _, v in curve],
+                mode="lines",
+                line={"color": color},
+                fill="tozeroy",
+                fillcolor=f"rgba({red}, {green}, {blue}, {FILL_ALPHA})",
+                hoverinfo="skip",
+            ),
+            go.Scatter(
+                x=days,
+                y=minutes,
+                mode="markers",
+                marker={"color": color},
+                hovertemplate="%{x|%a %d %b}: %{y} min<extra></extra>",
+            ),
+        ]
     )
     figure.update_layout(
         title="Planned minutes per day for a sample 10-hour task",
+        showlegend=False,
         margin={"l": 50, "r": 50, "t": 50, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        xaxis={"tickmode": "array", "tickvals": list(chart["day"]), "tickformat": "%a %d %b"},
+        xaxis={
+            "tickmode": "array",
+            "tickvals": days,
+            "tickformat": "%a %d %b",
+            "range": [days[0] - timedelta(hours=18), days[-1] + timedelta(hours=18)],
+            "ticklabelstandoff": 8,
+        },
         yaxis={"title": "Minutes", "rangemode": "tozero"},
     )
     return figure
 
 
-def places_figure(base: BaseData, color: str) -> go.Figure:
-    """The places as a read-only graph: a node per place, an edge per pair with its minutes.
+def monotone_curve(values: Sequence[int], steps: int) -> list[tuple[float, float]]:
+    """Draw a smooth curve through one value per day that never overshoots its neighbours.
 
-    Places sit on a circle (a fixed layout, so the picture never shifts). An edge is labelled with
-    the minutes of each mode between its two places; hovering a label names the modes.
+    A cubic Hermite spline whose slopes follow Fritsch and Carlson: a day that is a peak, a
+    trough or flat has slope 0, so the curve stays between each pair of neighbouring values
+    (a plain spline dips below a flat stretch before rising). Plotly's own spline cannot give
+    that guarantee.
+
+    Args:
+        values: One value per day; their positions are 0, 1, 2, and so on.
+        steps: Points to draw in each interval.
+
+    Returns:
+        (position, value) pairs from the first day to the last.
+    """
+    n = len(values)
+    if n < 2:  # noqa: PLR2004 - a curve needs two points
+        return [(float(i), float(v)) for i, v in enumerate(values)]
+    delta = [values[i + 1] - values[i] for i in range(n - 1)]
+    slope = [float(delta[0])]
+    for before, after in itertools.pairwise(delta):
+        slope.append(0.0 if before * after <= 0 else 2 * before * after / (before + after))
+    slope.append(float(delta[-1]))
+    curve: list[tuple[float, float]] = []
+    for i in range(n - 1):
+        for k in range(steps):
+            t = k / steps
+            h00, h10 = 2 * t**3 - 3 * t**2 + 1, t**3 - 2 * t**2 + t
+            h01, h11 = -2 * t**3 + 3 * t**2, t**3 - t**2
+            value = h00 * values[i] + h10 * slope[i] + h01 * values[i + 1] + h11 * slope[i + 1]
+            curve.append((i + t, value))
+    curve.append((float(n - 1), float(values[-1])))
+    return curve
+
+
+def places_figure(base: BaseData, color: str) -> go.Figure:
+    """The places as a read-only, interactive graph: a node per place, an edge per pair.
+
+    Places sit on a circle (a fixed layout, so the picture never shifts). Hovering a node lists
+    its edges with their travel minutes per mode; hovering the middle of an edge names its two
+    places. The graph pans and zooms.
 
     Args:
         base: Places and the travel table.
@@ -253,10 +313,11 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
     """
     angle = {p.id: 2 * math.pi * i / len(base.places) for i, p in enumerate(base.places)}
     at = {pid: (math.cos(a), math.sin(a)) for pid, a in angle.items()}
+    name = {p.id: p.name for p in base.places}
     legs: dict[tuple[str, str], list[str]] = {}
     for leg in base.travel:
         pair = (min(leg.origin, leg.destination), max(leg.origin, leg.destination))
-        text = f"{leg.mode.value} {leg.minutes}"
+        text = f"{leg.mode.value} {leg.minutes} min"
         if text not in legs.setdefault(pair, []):
             legs[pair].append(text)
     lines_x: list[float | None] = []
@@ -265,7 +326,16 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
         lines_x += [at[a][0], at[b][0], None]
         lines_y += [at[a][1], at[b][1], None]
     middles = [((at[a][0] + at[b][0]) / 2, (at[a][1] + at[b][1]) / 2) for a, b in legs]
-    labels = [" / ".join(t.rsplit(" ", 1)[1] for t in texts) for texts in legs.values()]
+    edge_hover = [f"{name[a]} - {name[b]}<br>{', '.join(t)}" for (a, b), t in legs.items()]
+    node_hover = [
+        f"<b>{p.name}</b><br>"
+        + "<br>".join(
+            f"{name[b if a == p.id else a]}: {', '.join(t)}"
+            for (a, b), t in legs.items()
+            if p.id in (a, b)
+        )
+        for p in base.places
+    ]
     figure = go.Figure(
         [
             go.Scatter(
@@ -279,10 +349,9 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
             go.Scatter(
                 x=[m[0] for m in middles],
                 y=[m[1] for m in middles],
-                mode="text",
-                text=labels,
-                textfont={"size": 10},
-                hovertext=[", ".join(f"{t} min" for t in texts) for texts in legs.values()],
+                mode="markers",
+                marker={"size": 10, "color": color, "opacity": 0},
+                hovertext=edge_hover,
                 hoverinfo="text",
             ),
             go.Scatter(
@@ -291,20 +360,23 @@ def places_figure(base: BaseData, color: str) -> go.Figure:
                 mode="markers+text",
                 text=[p.name for p in base.places],
                 textposition="top center",
-                marker={"size": 14, "color": color},
-                hoverinfo="skip",
+                textfont={"size": 14},
+                marker={"size": NODE_SIZE, "color": color},
+                hovertext=node_hover,
+                hoverinfo="text",
             ),
         ]
     )
     axis = {"visible": False, "range": [-1.4, 1.4]}
     figure.update_layout(
         showlegend=False,
+        dragmode="pan",
         margin={"l": 10, "r": 10, "t": 10, "b": 10},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=axis,
         yaxis={**axis, "scaleanchor": "x"},
-        height=480,
+        height=520,
     )
     return figure
 

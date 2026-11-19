@@ -3,14 +3,18 @@ import re
 from datetime import datetime
 from typing import Any
 
+import pytest
+
 from planner.adapters.session import Usage
 from planner.adapters.views import (
     EXAMPLES_SHOWN,
+    NODE_SIZE,
     SAMPLE_DAYS,
     SAMPLE_MIN,
     THINKING_WORDS,
     call_message,
     examples,
+    monotone_curve,
     pace_chart,
     pace_figure,
     place_label,
@@ -126,25 +130,41 @@ def test_the_pace_chart_days_are_dates_in_order(state: SessionState, base: BaseD
     assert days[0].date() == state.now.date()
 
 
-def test_the_pace_figure_is_a_smooth_filled_line_with_one_tick_per_day(
+def test_the_pace_figure_is_a_filled_curve_with_a_marker_and_tick_per_day(
     state: SessionState, base: BaseData
 ) -> None:
+    curve, points = pace_figure(state, base, "#336699").data
     figure = pace_figure(state, base, "#336699")
-    [line] = figure.data
-    assert (line.line.shape, line.fill, line.line.color) == ("spline", "tozeroy", "#336699")
-    assert line.fillcolor == "rgba(51, 102, 153, 0.3)"
-    assert list(figure.layout.xaxis.tickvals) == list(line.x)
-    assert len(line.x) == SAMPLE_DAYS + 1
+    assert (curve.fill, curve.line.color) == ("tozeroy", "#336699")
+    assert curve.fillcolor == "rgba(51, 102, 153, 0.3)"
+    assert list(figure.layout.xaxis.tickvals) == list(points.x)  # every day, the last included
+    assert len(points.x) == SAMPLE_DAYS + 1
+    assert curve.x[0] == points.x[0]
+    assert curve.x[-1] == points.x[-1]
 
 
-def test_the_places_graph_has_a_node_per_place_and_minutes_on_each_edge(base: BaseData) -> None:
-    edges, labels, nodes = places_figure(base, "#336699").data
+@pytest.mark.parametrize(
+    "values", [[0, 0, 240, 240, 0], [240, 240, 120, 0, 0], [0, 100, 90, 300], [5, 5, 5], [7]]
+)
+def test_the_curve_never_leaves_the_range_of_neighbouring_days(values: list[int]) -> None:
+    curve = monotone_curve(values, 12)
+    assert [v for t, v in curve if t == int(t)] == values  # passes through every day
+    for t, v in curve:
+        low, high = int(t), min(int(t) + 1, len(values) - 1)
+        assert min(values[low], values[high]) - 1e-9 <= v <= max(values[low], values[high]) + 1e-9
+
+
+def test_the_places_graph_shows_each_places_edges_on_hover(base: BaseData) -> None:
+    edges, middles, nodes = places_figure(base, "#336699").data
     assert list(nodes.text) == [p.name for p in base.places]
+    assert nodes.marker.size >= NODE_SIZE
     pairs = {frozenset((leg.origin, leg.destination)) for leg in base.travel}
-    assert len(labels.text) == len(pairs)
-    shown = dict(zip(labels.hovertext, labels.text, strict=True))
-    assert shown["drive 30 min, transit 55 min"] == "30 / 55"
+    assert len(middles.hovertext) == len(pairs)
     assert edges.x.count(None) == len(pairs)
+    assert any("drive 30 min, transit 55 min" in t for t in middles.hovertext)
+    home = nodes.hovertext[0]
+    assert home.startswith(f"<b>{base.places[0].name}</b>")
+    assert home.count("<br>") == sum(base.places[0].id in p for p in pairs)
 
 
 def test_the_pace_chart_plans_the_sample_task_day_by_day(

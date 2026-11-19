@@ -127,7 +127,8 @@ CSS: Final = """
 .thought-group { min-width: 16rem; }
 .thought-group .title .md { flex: 1; }
 .badge { float: right; border-radius: var(--radius-sm); padding: 0 var(--spacing-md);
-  color: white; font-size: var(--text-sm); }
+  color: white; font-size: var(--text-sm); font-style: italic; }
+.badge::first-letter { text-transform: uppercase; }
 .badge.ok { background: var(--color-green-500); }
 .badge.bad { background: var(--color-red-500); }
 .badge.wait { background: var(--color-orange-500); }
@@ -142,7 +143,12 @@ CSS: Final = """
 .turn-usage { position: absolute; left: 0; top: calc(100% + 4.5rem); white-space: nowrap;
   color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
-.confirm-card { border-color: var(--color-orange-500) !important; }
+.confirm-card { border: 1px solid var(--primary-500) !important; }
+.confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
+.confirm-card * { border-color: transparent; }
+.confirm-card button.secondary { background: transparent; color: var(--primary-500);
+  border: 1px solid var(--primary-500); }
+.help { display: block; text-align: right; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
 .examples button, .example { border: 1px solid var(--border-color-primary) !important;
   border-radius: var(--radius-lg); }
@@ -573,7 +579,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 with gr.Group(visible=False, elem_classes="confirm-card") as card:
                     question = gr.Markdown()
                     with gr.Row():
-                        yes = gr.Button("Yes, do it", variant="stop")
+                        yes = gr.Button("Yes, do it", variant="primary")
                         no = gr.Button("No, keep it")
                 box = gr.Textbox(
                     elem_id=BOX_ID,
@@ -591,25 +597,26 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     wrap=True,
                     elem_classes="compact",
                 )
-                with gr.Accordion("Places (read only)", open=False):
-                    gr.Markdown("### Places graph *(read only)*")
-                    gr.Plot(value=places_figure(ctl.base, THEME.primary_500), show_label=False)
-                    gr.Dataframe(
-                        value=place_rows(ctl.base),
-                        headers=PLACE_HEADERS,
-                        label="Opening hours",
-                        interactive=False,
-                        wrap=True,
-                        elem_classes="compact",
-                    )
-                    gr.Dataframe(
-                        value=travel_rows(ctl.base),
-                        headers=TRAVEL_HEADERS,
-                        label="Travel",
-                        interactive=False,
-                        wrap=True,
-                        elem_classes="compact",
-                    )
+                with gr.Accordion("Places (read only)", open=False), gr.Tabs():
+                    with gr.Tab("Graph"):
+                        gr.Plot(value=places_figure(ctl.base, THEME.primary_500), show_label=False)
+                    with gr.Tab("Table"):
+                        gr.Dataframe(
+                            value=place_rows(ctl.base),
+                            headers=PLACE_HEADERS,
+                            label="Opening hours",
+                            interactive=False,
+                            wrap=True,
+                            elem_classes="compact",
+                        )
+                        gr.Dataframe(
+                            value=travel_rows(ctl.base),
+                            headers=TRAVEL_HEADERS,
+                            label="Travel",
+                            interactive=False,
+                            wrap=True,
+                            elem_classes="compact",
+                        )
             with gr.Tab("Pace"):
                 with gr.Row():
                     daily = gr.Number(
@@ -650,6 +657,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             persona = gr.Dropdown(
                 persona_choices(),
                 value=PERSONA,
+                container=False,
                 show_label=False,
                 filterable=False,
             )
@@ -658,6 +666,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             choice = gr.Dropdown(
                 [("Default model", "default"), ("My own endpoint", "custom")],
                 value="default",
+                container=False,
                 show_label=False,
                 filterable=False,
             )
