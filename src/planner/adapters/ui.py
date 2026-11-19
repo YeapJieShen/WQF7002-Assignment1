@@ -705,8 +705,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                         label="Daily limit (min)", precision=0, minimum=0, maximum=MAX_MIN
                     )
                     consecutive = gr.Number(
-                        label="Longest run before a long break (min)",
-                        info="0 turns long breaks off",
+                        label="Longest run before a long break (min, 0 = off)",
                         precision=0,
                         minimum=0,
                         maximum=MAX_MIN,
