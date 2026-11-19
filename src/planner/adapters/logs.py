@@ -22,14 +22,16 @@ import logging
 import re
 import threading
 import time
+import traceback
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Final, Literal, TextIO
+from typing import TYPE_CHECKING, Any, Final, Literal, TextIO, override
 from urllib.parse import quote, quote_plus
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from types import TracebackType
 
 ROOT: Final = "planner"
 REDACTED: Final = "[secret]"
@@ -176,7 +178,30 @@ def _fields(record: logging.LogRecord) -> dict[str, Any]:
     return out
 
 
-class JsonFormatter(logging.Formatter):
+class _GuardedFormatter(logging.Formatter):
+    """A formatter that keeps an exception's message out of the log unless DEBUG is on.
+
+    The message can quote what the user typed (a validation error repeats the bad value) or what
+    a provider answered, so below DEBUG only the stack and the exception's class are logged.
+    """
+
+    @override
+    def formatException(
+        self,
+        ei: tuple[type[BaseException], BaseException, TracebackType | None]
+        | tuple[None, None, None],
+    ) -> str:
+        """Return the traceback; the exception message only when DEBUG is enabled."""
+        if ei[0] is None or logging.getLogger(ROOT).isEnabledFor(logging.DEBUG):
+            return super().formatException(ei)
+        frames = "".join(traceback.format_tb(ei[2]))
+        return (
+            f"Traceback (most recent call last):\n{frames}"
+            f"{ei[0].__qualname__}: message withheld below DEBUG"
+        )
+
+
+class JsonFormatter(_GuardedFormatter):
     """One JSON object per line: time, level, logger, event, correlation ids, fields, error."""
 
     def format(self, record: logging.LogRecord) -> str:
@@ -197,7 +222,7 @@ class JsonFormatter(logging.Formatter):
         return scrub(json.dumps(_clean(payload)))
 
 
-class TextFormatter(logging.Formatter):
+class TextFormatter(_GuardedFormatter):
     """Readable lines for a terminal: the usual prefix, the event, then key=value fields."""
 
     def __init__(self) -> None:
