@@ -234,9 +234,10 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
     model_id, revision = settings.zerogpu_model_id, settings.zerogpu_model_revision
     tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
     # Sampling comes from the model's generation_config, the settings Qwen recommends.
-    model = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype="auto").to(
-        "cuda"
-    )
+    # Typed Any: with transformers installed, mypy sees `.to` as a `_Wrapped` that wants the model
+    # as its first argument. A type: ignore would instead fail CI, where transformers is absent.
+    loaded: Any = AutoModelForCausalLM.from_pretrained(model_id, revision=revision, dtype="auto")
+    model = loaded.to("cuda")
 
     @spaces.GPU(duration=settings.zerogpu_gpu_duration_s)  # type: ignore[untyped-decorator]  # spaces is untyped
     def generate(prompt: str) -> Iterator[str]:
