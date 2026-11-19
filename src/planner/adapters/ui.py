@@ -173,7 +173,8 @@ CSS: Final = """
 .bot.message:has(.turn-usage) { position: relative; }
 .bot.message .message:has(.turn-usage) { position: static; }
 .turn-usage { position: absolute; left: 2rem; top: calc(100% + 11px); white-space: nowrap;
-  line-height: 24px; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+  line-height: 24px; font-style: italic; color: var(--body-text-color-subdued);
+  font-size: var(--text-sm); }
 .caption p { color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
 .persona input { padding-right: var(--size-8); text-overflow: ellipsis; overflow: hidden;

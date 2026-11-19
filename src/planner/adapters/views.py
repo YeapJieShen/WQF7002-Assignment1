@@ -119,11 +119,18 @@ def call_message(records: Sequence[CallRecord], *, waiting: bool = False) -> Mes
     """
     last = records[-1]
     state, final = _call_state(last, waiting=waiting)
-    title = f'{last.tool} <span class="badge {state.css}">{state.text}</span>'
+    title = f'*Tool call:* *{last.tool}* <span class="badge {state.css}">{state.text}</span>'
     metadata: dict[str, str] = {"title": title, "status": "done" if final else "pending"}
-    lines = "\n".join(f"- {r.stage}: {r.outcome}" for r in records)
-    content = f"`{last.tool}` `{last.args}`\n\n{lines}"
+    lines = "\n".join(f"- {r.stage.capitalize()}: {_italic_outcome(r.outcome)}" for r in records)
+    content = f"Args: `{last.tool}` `{last.args}`\n\n{lines}"
     return {"role": "assistant", "content": content, "metadata": metadata}
+
+
+def _italic_outcome(outcome: str) -> str:
+    """Capitalise a stage outcome and italicise it; a rejection keeps its reason in plain text."""
+    word, sep, reason = outcome.partition(": ")
+    first = word[:1].upper() + word[1:]
+    return f"*{first}*" + (f" — {reason}" if sep else "")
 
 
 @dataclass(frozen=True)
@@ -157,11 +164,9 @@ def thinking(tick: int, tool: str | None = None) -> Message:
 
 
 def usage_line(seconds: float, usage: Usage | None) -> str:
-    """Summarise a turn, such as `3.2 s · 1,200 in / 40 out tokens`."""
-    parts = [f"{seconds:.1f} s"]
-    if usage:
-        parts.append(f"{usage.input_tokens:,} in / {usage.output_tokens:,} out tokens")
-    return " · ".join(parts)
+    """Summarise a turn, such as `1,200 In / 40 Out Tokens · 3.2 s` (the page italicises it)."""
+    parts = [f"{usage.input_tokens:,} In / {usage.output_tokens:,} Out Tokens"] if usage else []
+    return " · ".join([*parts, f"{seconds:.1f} s"])
 
 
 def usage_footer(seconds: float, usage: Usage | None) -> str:
