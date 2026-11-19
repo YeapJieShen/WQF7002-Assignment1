@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -140,6 +141,16 @@ class ReplyingModel:
         return AIMessage("ok")
 
 
+@pytest.fixture
+def _keep_logging() -> Iterator[None]:
+    """`evals.main` configures the `planner` logger; put it back afterwards."""
+    root = logging.getLogger("planner")
+    before = (list(root.handlers), root.level, root.propagate)
+    yield
+    root.handlers[:], root.level, root.propagate = before
+
+
+@pytest.mark.usefixtures("_keep_logging")
 def test_a_multi_case_run_builds_the_backend_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
