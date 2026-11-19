@@ -414,3 +414,15 @@ def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
     assert Pace(daily_limit_min=MAX_MIN).daily_limit_min == MAX_MIN
     with pytest.raises(ValueError, match="less than or equal"):
         Pace(daily_limit_min=MAX_MIN + 1)
+
+
+def test_a_restart_releases_the_old_tabs_claim_on_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    released: list[Any] = []
+    monkeypatch.setattr("planner.adapters.ui.release_endpoint", released.append)
+    ctl = controller()
+    tab = boot(ctl)
+    ctl.connect(tab, "custom", "https://x.test/v1", "m", KEY)
+    ctl.demo(tab)
+    assert released == [tab.custom]

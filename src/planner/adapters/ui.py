@@ -319,6 +319,8 @@ class Controller:
             )
         except ValueError as exc:
             raise gr.Error(str(exc)) from exc
+        # The new tab registered the key with the logs again; the old tab no longer owns it.
+        release_endpoint(custom)
         return tab, *self.full(tab)
 
     # Settings.
