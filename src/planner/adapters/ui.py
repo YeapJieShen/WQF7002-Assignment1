@@ -35,6 +35,7 @@ from planner.adapters.views import (
     place_rows,
     task_rows,
     travel_rows,
+    usage_line,
 )
 from planner.app.prompt import forwarded
 from planner.domain.models import Minutes, Pace, SessionState, Weekday
@@ -124,6 +125,7 @@ CSS: Final = """
   border: 2px solid var(--border-color-primary); border-top-color: var(--color-accent);
   border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.usage { text-align: right; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .confirm-card { border: 2px solid var(--error-border-color) !important;
   border-radius: var(--radius-lg); padding: var(--spacing-md); }
 """
@@ -244,12 +246,13 @@ class Controller:
             place_label(self.base, state.location),
             gr.update(visible=False),
             "",
+            "",
             *pace_values(state.pace),
             pace_chart(state, self.base),
         )
 
     def refresh(self, tab: Tab | None) -> tuple[Any, ...]:
-        """What changes after a turn: the box, the task table, the location and the card."""
+        """What changes after a turn: the box, the tables, the location, the card, the usage."""
         live = _live(tab)
         state = live.session.state
         asking = live.pending is not None
@@ -259,6 +262,7 @@ class Controller:
             place_label(self.base, state.location),
             gr.update(visible=asking),
             live.pending or "",
+            usage_line(live.turns[-1].seconds, live.turns[-1].usage) if live.turns else "",
         )
 
     # Starting a tab.
@@ -523,6 +527,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         with gr.Tabs():
             with gr.Tab("Chat"):
                 chatbot = gr.Chatbot(show_label=False, height="60vh", layout="bubble")
+                usage = gr.Markdown(elem_classes="usage")
                 with gr.Group(visible=False, elem_classes="confirm-card") as card:
                     question = gr.Markdown()
                     with gr.Row():
@@ -616,8 +621,8 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             gr.LoginButton()
 
         pace: list[Any] = [daily, consecutive, long_break, distribution, hardest, *per_day]
-        reset = [tab, chatbot, box, tasks, chip, card, question, *pace, chart]
-        after = [box, tasks, chip, card, question]
+        reset = [tab, chatbot, box, tasks, chip, card, question, usage, *pace, chart]
+        after = [box, tasks, chip, card, question, usage]
         sent = [box, chatbot, tab]
 
         app.load(ctl.boot, None, reset, api_visibility="private")
