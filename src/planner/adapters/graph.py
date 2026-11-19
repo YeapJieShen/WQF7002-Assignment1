@@ -20,7 +20,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
-from planner.adapters.logs import emit
+from planner.adapters.logs import elapsed_ms, emit
 from planner.app.calls import CallRecord
 from planner.app.guardrails import confirmation_question
 from planner.app.prompt import session_snapshot
@@ -207,7 +207,7 @@ class _Steps:
             "tool_act",
             tool=tool,
             success=True,
-            duration_ms=_ms(started),
+            duration_ms=elapsed_ms(started),
         )
         return {
             "session": result.state,
@@ -233,10 +233,6 @@ class _Steps:
         return "act" if state["pending"] is not None else "call_model"
 
 
-def _ms(started: float) -> float:
-    return round((time.perf_counter() - started) * 1000, 2)
-
-
 def _timed[**P, R](name: str, node: Callable[P, R]) -> Callable[P, R]:
     """Wrap a node so its duration is logged at DEBUG, even when it pauses or fails."""
 
@@ -246,7 +242,7 @@ def _timed[**P, R](name: str, node: Callable[P, R]) -> Callable[P, R]:
         try:
             return node(*args, **kwargs)
         finally:
-            emit(LOG, "graph_step", level=logging.DEBUG, node=name, duration_ms=_ms(started))
+            emit(LOG, "graph_step", level=logging.DEBUG, node=name, duration_ms=elapsed_ms(started))
 
     return run
 
