@@ -79,6 +79,19 @@ def test_exceptions_are_logged_with_the_stack() -> None:
         raise ValueError("boom")  # noqa: TRY301 - the raise is what the test logs
     except ValueError as exc:
         logs.emit(LOG, "failed", level=logging.ERROR, exc_info=exc)
+    trace = str(lines(out)[0]["exc"])
+    assert "test_exceptions_are_logged_with_the_stack" in trace  # the stack
+    assert "ValueError" in trace
+    assert "ValueError: boom" not in trace  # the message may quote user input
+
+
+def test_the_exception_message_is_logged_at_debug() -> None:
+    out = io.StringIO()
+    logs.configure_logging("DEBUG", "json", out)
+    try:
+        raise ValueError("boom")  # noqa: TRY301 - the raise is what the test logs
+    except ValueError as exc:
+        logs.emit(LOG, "failed", level=logging.ERROR, exc_info=exc)
     assert "ValueError: boom" in str(lines(out)[0]["exc"])
 
 
