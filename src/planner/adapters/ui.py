@@ -77,6 +77,16 @@ MARK_PASTE_JS: Final = f"""(text) => {{
   window.plannerPasted = false;
   return pasted ? {json.dumps(PASTE_MARK)} + text : text;
 }}"""
+# Gradio 6.31 copies a message's stored text, usage footer included, and has no hook to change it.
+# So the page wraps `navigator.clipboard.writeText` and drops that one span (exact class only).
+USAGE_SPAN: Final = r'\s*<span class="turn-usage"[^>]*>.*?</span>'
+COPY_JS: Final = (
+    "() => { const write = navigator.clipboard.writeText.bind(navigator.clipboard);"
+    " const strip = new RegExp("
+    + json.dumps(USAGE_SPAN)
+    + ', "g");'
+    + " navigator.clipboard.writeText = (text) => write(String(text).replace(strip, '')); }"
+)
 # Textbox has no built-in "disabled while empty": grey the submit arrow from the page.
 ARROW_JS: Final = f"""(text) => {{
   const arrow = document.querySelector("#{BOX_ID} button[data-testid=submit-button]");
@@ -763,6 +773,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         app.load(None, None, None, js=WATCH_PASTE_JS)
         app.load(None, None, None, js=LEAVE_JS)
         app.load(None, None, None, js=HINTS_JS)
+        app.load(None, None, None, js=COPY_JS)
         app.load(None, box, None, js=ARROW_JS)
         box.change(None, box, None, js=ARROW_JS)
         chatbot.change(None, chatbot, None, js=CHAT_CHANGED_JS)
