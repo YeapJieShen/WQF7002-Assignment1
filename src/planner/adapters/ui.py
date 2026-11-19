@@ -109,11 +109,14 @@ CHARGE_NOTICE: Final = (
     "tool calling."
 )
 HELP_HTML: Final = (
-    '<div class="help" title="'
+    '<div class="help"><span>Endpoint details</span>'
+    '<span class="help-mark" tabindex="0" role="button" aria-label="Endpoint details" '
+    'aria-describedby="endpoint-help"><b>?</b>'
+    '<span id="endpoint-help" role="tooltip" class="help-tip">'
     + html.escape(CHARGE_NOTICE.replace("**", "").replace("`", ""))
-    + '"><span>Endpoint details</span><b>?</b></div>'
+    + "</span></span></div>"
 )
-"""The notice behind a small "?" that shows it on hover, so it does not fill the sidebar."""
+"""The notice behind a small "?": a tooltip on hover, focus or tap, so it stays out of the way."""
 THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
 CSS: Final = """
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
@@ -144,6 +147,8 @@ CSS: Final = """
   line-height: 24px; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .caption p { color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
+.persona input { padding-right: var(--size-8); text-overflow: ellipsis; overflow: hidden;
+  white-space: nowrap; }
 .confirm-card { border: 1px solid var(--primary-500) !important; }
 .confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
 .confirm-card * { border-color: transparent; }
@@ -152,6 +157,14 @@ CSS: Final = """
 .confirm-card button.secondary { background: transparent; color: var(--primary-500);
   border: 1px solid var(--primary-500); }
 .help { display: flex; justify-content: space-between; align-items: center; }
+.help-mark { position: relative; cursor: help; }
+.help-tip { display: none; position: absolute; right: 0; top: 100%; z-index: 10; width: 16rem;
+  max-width: 70vw; white-space: pre-line; padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--background-fill-primary); color: var(--body-text-color);
+  border: 1px solid var(--border-color-primary); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-drop-lg); font-size: var(--text-sm); }
+.help-mark:hover .help-tip, .help-mark:focus .help-tip, .help-mark:focus-within .help-tip {
+  display: block; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
 .confirm-card .row { padding: 0 var(--spacing-md) var(--spacing-md); }
 .examples button, .example { border: 1px solid var(--border-color-primary) !important;
@@ -665,6 +678,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                 persona_choices(),
                 value=PERSONA,
                 label="Sample persona",
+                elem_classes="persona",
                 info="Loads a sample week; the clock starts at the shown time",
                 filterable=False,
             )
