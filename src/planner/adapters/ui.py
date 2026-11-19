@@ -109,9 +109,9 @@ CHARGE_NOTICE: Final = (
     "tool calling."
 )
 HELP_HTML: Final = (
-    '<span class="help" title="'
+    '<div class="help" title="'
     + html.escape(CHARGE_NOTICE.replace("**", "").replace("`", ""))
-    + '">Endpoint details <b>?</b></span>'
+    + '"><span>Endpoint details</span><b>?</b></div>'
 )
 """The notice behind a small "?" that shows it on hover, so it does not fill the sidebar."""
 THEME: Final = gr.themes.Default()  # stock: no custom palette, fonts or colours
@@ -142,13 +142,14 @@ CSS: Final = """
 .bot.message .message:has(.turn-usage) { position: static; }
 .turn-usage { position: absolute; left: 2rem; top: calc(100% + 11px); white-space: nowrap;
   line-height: 24px; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+.caption p { color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
 .confirm-card { border: 1px solid var(--primary-500) !important; }
 .confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
 .confirm-card * { border-color: transparent; }
 .confirm-card button.secondary { background: transparent; color: var(--primary-500);
   border: 1px solid var(--primary-500); }
-.help { display: block; text-align: right; }
+.help { display: flex; justify-content: space-between; align-items: center; }
 .confirm-card p { padding: var(--spacing-sm) var(--spacing-md); }
 .confirm-card .row { padding: 0 var(--spacing-md) var(--spacing-md); }
 .examples button, .example { border: 1px solid var(--border-color-primary) !important;
@@ -633,12 +634,6 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                     long_break = gr.Number(
                         label="Long break (min)", precision=0, minimum=0, maximum=MAX_MIN
                     )
-                distribution = gr.Slider(
-                    0, 1, step=0.1, label="Spread", info="0 front-loaded, 1 even"
-                )
-                hardest = gr.Checkbox(
-                    label="Hardest first", info="Among tasks without a deadline, longer first"
-                )
                 gr.Markdown("Limit for each day (minutes). Blank days use the daily limit.")
                 with gr.Row(elem_classes="limits"):
                     per_day = [
@@ -651,15 +646,24 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
                         )
                         for d in WEEKDAYS
                     ]
-                reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
+                distribution = gr.Slider(
+                    0, 1, step=0.1, label="Spread", info="0 front-loaded, 1 even"
+                )
+                hardest = gr.Checkbox(
+                    label="Hardest first", info="Among tasks without a deadline, longer first"
+                )
+                gr.Markdown(
+                    "The chart: how a sample 10-hour task would be spread.", elem_classes="caption"
+                )
                 chart = gr.Plot(label="Pace", show_label=False)
+                reset_btn = gr.Button("Reset to defaults", size="sm", scale=0)
         with gr.Sidebar(label="Settings", open=False, position="right"):
             gr.Markdown("### Session")
             persona = gr.Dropdown(
                 persona_choices(),
                 value=PERSONA,
-                container=False,
-                show_label=False,
+                label="Sample persona",
+                info="Loads a sample week; the clock starts at the shown time",
                 filterable=False,
             )
             demo_btn = gr.Button("Try a demo", size="sm")
