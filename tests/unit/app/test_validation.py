@@ -7,6 +7,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from planner.app.prompt import forwarded
 from planner.app.tools.args import (
     AddTaskArgs,
     DeleteTaskArgs,
@@ -23,9 +24,9 @@ from planner.app.validation import (
     reject_malformed,
     validate_call,
 )
-from planner.domain.errors import ErrorCode
+from planner.domain.errors import ErrorCode, Issue
 from planner.domain.models import BaseData, SessionState, Task, TaskType
-from tests.conftest import Codes
+from tests.conftest import SAID, Codes
 
 # --- accepted calls --------------------------------------------------------------------------
 
@@ -53,9 +54,11 @@ from tests.conftest import Codes
             "add_task",
             {
                 "title": "Collect parcel",
-                "duration_min": 20,
+                "duration_min": 45,
+                "duration_quote": "45 minutes",
                 "place": "post_office",
                 "deadline": "2026-10-30T17:00",
+                "deadline_quote": "by Friday",
             },
             AddTaskArgs,
         ),
@@ -69,20 +72,19 @@ def test_accepted(
     state: SessionState,
     base: BaseData,
 ) -> None:
-    verdict = validate_call(name, args, state, base)
+    verdict = validate_call(name, args, state, base, said=(SAID,))
     assert isinstance(verdict, Accepted), verdict
     if expected_type is not None:
         assert isinstance(verdict.args, expected_type)
 
 
 def test_accepted_args_are_typed(state: SessionState, base: BaseData) -> None:
-    verdict = validate_call(
-        "add_task", {"title": "x", "type": "errand", "duration_min": 30}, state, base
-    )
+    args = {"title": "x", "type": "errand", "duration_min": 45, "duration_quote": "45 minutes"}
+    verdict = validate_call("add_task", args, state, base, said=(SAID,))
     assert isinstance(verdict, Accepted)
     assert isinstance(verdict.args, AddTaskArgs)
     assert verdict.args.type is TaskType.ERRAND
-    assert verdict.args.duration_min == 30
+    assert verdict.args.duration_min == 45
 
 
 # --- allowlist and shape ---------------------------------------------------------------------
@@ -119,7 +121,8 @@ def test_duration_out_of_range(duration: int, codes: Codes) -> None:
 
 @pytest.mark.parametrize("duration", [5, 720])
 def test_duration_bounds_inclusive(duration: int, codes: Codes) -> None:
-    assert codes("add_task", {"title": "x", "duration_min": duration}) == []
+    args = {"title": "x", "duration_min": duration, "duration_quote": "45 minutes"}
+    assert codes("add_task", args) == []
 
 
 @pytest.mark.parametrize("duration", ["20", 20.5, True])
@@ -147,7 +150,7 @@ def test_prerequisites_wrong_type(codes: Codes) -> None:
 # --- datetimes and horizon -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad", ["tomorrow", "2026-10-30", "17:15", "2026-13-40T10:00"])
+@pytest.mark.parametrize("bad", ["tomorrow", "17:15", "2026-13-40T10:00", "2026-13-40"])
 def test_bad_datetime(bad: object, codes: Codes) -> None:
     assert codes("add_task", {"title": "x", "deadline": bad}) == [ErrorCode.BAD_DATETIME]
 
@@ -158,18 +161,19 @@ def test_timezone_offset_rejected(codes: Codes) -> None:
 
 
 def test_datetime_in_past(codes: Codes) -> None:
-    args = {"title": "x", "deadline": "2026-10-28T15:39"}
+    args = {"title": "x", "deadline": "2026-10-28T15:39", "deadline_quote": "by Friday"}
     assert codes("add_task", args) == [ErrorCode.OUT_OF_HORIZON]
 
 
 def test_datetime_beyond_horizon(codes: Codes) -> None:
-    args = {"title": "x", "deadline": "2026-11-04T15:41"}
+    args = {"title": "x", "deadline": "2026-11-04T15:41", "deadline_quote": "by Friday"}
     assert codes("add_task", args) == [ErrorCode.OUT_OF_HORIZON]
 
 
 @pytest.mark.parametrize("edge", ["2026-10-28T15:40", "2026-11-04T15:40"])
 def test_horizon_edges_inclusive(edge: str, codes: Codes) -> None:
-    assert codes("add_task", {"title": "x", "deadline": edge}) == []
+    args = {"title": "x", "deadline": edge, "deadline_quote": "by Friday"}
+    assert codes("add_task", args) == []
 
 
 @pytest.mark.parametrize("day", ["2026-10-27", "2026-11-12"])
@@ -280,7 +284,8 @@ def test_update_with_only_nulls_is_empty(codes: Codes) -> None:
 
 
 def test_update_checks_place_and_horizon(codes: Codes) -> None:
-    args = {"task_id": "T4", "fields": {"place": "mars", "deadline": "2027-01-01T00:00"}}
+    fields = {"place": "mars", "deadline": "2027-01-01T00:00", "deadline_quote": "by Friday"}
+    args = {"task_id": "T4", "fields": fields}
     assert codes("update_task", args) == [ErrorCode.OUT_OF_HORIZON, ErrorCode.UNKNOWN_PLACE]
 
 
@@ -363,13 +368,18 @@ def test_creates_cycle_matches_oracle(
 
 
 def test_fixed_event_needs_a_start_time(codes: Codes) -> None:
-    args = {"title": "Exam", "type": "fixed_event", "duration_min": 60}
+    args = {"title": "Exam", "type": "fixed_event"}
     assert codes("add_task", args) == [ErrorCode.MISSING_ARG]
     assert codes("add_task", {**args, "earliest_start": "2026-10-29T09:00"}) == []
 
 
 def test_deadline_before_earliest_start_is_rejected_on_add(codes: Codes) -> None:
-    args = {"title": "x", "earliest_start": "2026-10-29T12:00", "deadline": "2026-10-29T10:00"}
+    args = {
+        "title": "x",
+        "earliest_start": "2026-10-29T12:00",
+        "deadline": "2026-10-29T10:00",
+        "deadline_quote": "by Friday",
+    }
     assert codes("add_task", args) == [ErrorCode.BAD_VALUE]
 
 
@@ -384,3 +394,117 @@ def test_update_checks_the_merged_task(codes: Codes) -> None:
     assert ErrorCode.OUT_OF_HORIZON in codes("update_task", args)
     late = {"task_id": "T3", "fields": {"earliest_start": "2026-11-03T09:00"}}
     assert codes("update_task", late) == [ErrorCode.BAD_VALUE]
+
+
+# --- stated values: a duration or deadline must quote the user -------------------------------
+
+HAIRCUT = "Add a haircut at the salon in Bangsar this week"
+
+
+def _issues(
+    name: str, args: dict[str, Any], said: tuple[str, ...], state: SessionState, base: BaseData
+) -> list[Issue]:
+    verdict = validate_call(name, args, state, base, said)
+    return [] if isinstance(verdict, Accepted) else list(verdict.issues)
+
+
+def test_invented_duration_without_a_quote_is_rejected(state: SessionState, base: BaseData) -> None:
+    [issue] = _issues("add_task", {"title": "Haircut", "duration_min": 60}, (HAIRCUT,), state, base)
+    assert issue.code is ErrorCode.UNSTATED_VALUE
+    assert issue.field == "duration_quote"
+    assert "do not guess: ask the user for it, or leave duration_min out" in issue.message
+
+
+def test_quote_the_user_did_not_say_is_rejected(state: SessionState, base: BaseData) -> None:
+    args = {"title": "Haircut", "deadline": "2026-11-01T18:00", "deadline_quote": "by Sunday"}
+    [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "deadline_quote")
+    assert "'by Sunday' is not in the user's messages this turn" in issue.message
+
+
+def test_stated_values_are_accepted_ignoring_case_and_spacing(
+    state: SessionState, base: BaseData
+) -> None:
+    args = {
+        "title": "Haircut",
+        "duration_min": 60,
+        "duration_quote": "ABOUT an hour",
+        "deadline": "2026-11-01",
+        "deadline_quote": "this  week",
+    }
+    said = ("Add a haircut,\nabout   an hour, this\tweek",)
+    assert _issues("add_task", args, said, state, base) == []
+
+
+def test_a_blank_quote_counts_as_missing(state: SessionState, base: BaseData) -> None:
+    args = {"title": "x", "duration_min": 30, "duration_quote": "  "}
+    [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
+    assert "duration_min needs duration_quote" in issue.message
+
+
+def test_any_message_of_the_turn_can_state_the_value(state: SessionState, base: BaseData) -> None:
+    args = {"title": "x", "duration_min": 30, "duration_quote": "half an hour"}
+    assert _issues("add_task", args, (HAIRCUT, "half an hour"), state, base) == []
+
+
+def test_pasted_text_is_not_the_users_own_words(state: SessionState, base: BaseData) -> None:
+    args = {"title": "Reply", "deadline": "2026-10-30T17:00", "deadline_quote": "by Friday"}
+    said = (forwarded("Please reply by Friday."),)
+    [issue] = _issues("add_task", args, said, state, base)
+    assert issue.code is ErrorCode.UNSTATED_VALUE
+
+
+def test_update_without_a_duration_or_deadline_needs_no_quote(
+    state: SessionState, base: BaseData
+) -> None:
+    for fields in ({"status": "done"}, {"title": "Renamed"}, {"place": "home"}):
+        assert _issues("update_task", {"task_id": "T3", "fields": fields}, (), state, base) == []
+
+
+def test_update_of_a_duration_needs_the_users_words(state: SessionState, base: BaseData) -> None:
+    args = {"task_id": "T3", "fields": {"duration_min": 30}}
+    [issue] = _issues("update_task", args, ("make it longer",), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "fields.duration_quote")
+    stated = {"task_id": "T3", "fields": {"duration_min": 30, "duration_quote": "30 min"}}
+    assert _issues("update_task", stated, ("make it 30 min",), state, base) == []
+
+
+def test_a_quote_alone_is_not_a_change(codes: Codes) -> None:
+    args = {"task_id": "T3", "fields": {"duration_quote": "45 minutes"}}
+    assert codes("update_task", args) == [ErrorCode.BAD_VALUE]
+
+
+# --- datetime formats the model writes -------------------------------------------------------
+
+
+def test_date_only_deadline_means_the_end_of_that_day(state: SessionState, base: BaseData) -> None:
+    args = {"title": "x", "deadline": "2026-10-30", "deadline_quote": "by Friday"}
+    verdict = validate_call("add_task", args, state, base, (SAID,))
+    assert isinstance(verdict, Accepted)
+    assert isinstance(verdict.args, AddTaskArgs)
+    assert verdict.args.deadline == datetime(2026, 10, 30, 23, 59)
+
+
+@pytest.mark.parametrize("value", ["2026-10-30T17:00Z", "2026-10-30T17:00:00z"])
+def test_a_z_suffix_is_read_as_the_session_clock(
+    value: str, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "x", "deadline": value, "deadline_quote": "by Friday", "earliest_start": value}
+    verdict = validate_call("add_task", args, state, base, (SAID,))
+    assert isinstance(verdict, Accepted)
+    assert isinstance(verdict.args, AddTaskArgs)
+    assert verdict.args.deadline == verdict.args.earliest_start == datetime(2026, 10, 30, 17, 0)
+
+
+def test_date_only_with_z_is_still_a_date(state: SessionState, base: BaseData) -> None:
+    args = {"title": "x", "deadline": "2026-10-30Z", "deadline_quote": "by Friday"}
+    verdict = validate_call("add_task", args, state, base, (SAID,))
+    assert isinstance(verdict, Accepted)
+    assert isinstance(verdict.args, AddTaskArgs)
+    assert verdict.args.deadline == datetime(2026, 10, 30, 23, 59)
+
+
+def test_date_only_start_is_still_rejected(codes: Codes) -> None:
+    assert codes("add_task", {"title": "x", "earliest_start": "2026-10-30"}) == [
+        ErrorCode.BAD_DATETIME
+    ]

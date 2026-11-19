@@ -15,6 +15,7 @@ from langchain_core.messages import (
 from langgraph.types import Command
 
 from planner.adapters.graph import DECLINED, GAVE_UP, build_graph
+from planner.app.prompt import forwarded
 from planner.domain.models import BaseData, SessionState
 
 CONFIG: Any = {"configurable": {"thread_id": "t"}}
@@ -39,11 +40,13 @@ def call(name: str, args: dict[str, object], call_id: str = "c1") -> AIMessage:
     return AIMessage("", tool_calls=[{"name": name, "args": args, "id": call_id}])
 
 
-def start(model: ScriptedModel, base: BaseData, state: SessionState, **kwargs: int) -> Any:
+def start(
+    model: ScriptedModel, base: BaseData, state: SessionState, said: str = "hi", **kwargs: int
+) -> Any:
     graph = build_graph(model, base, RULES, **{"max_rejections": 3, **kwargs})
     first = graph.invoke(
         {
-            "messages": [HumanMessage("hi")],
+            "messages": [HumanMessage(said)],
             "session": state,
             "pending": None,
             "rejections": 0,
@@ -188,3 +191,49 @@ def test_call_log_records_the_users_answer(
     stages = [(r.stage, r.outcome) for r in final["call_log"]]
     assert stages[:2] == [("check", "accepted"), ("confirm", outcome)]
     assert (len(stages) == 3) is approved
+
+
+HAIRCUT = "Add a haircut at the salon in Bangsar this week"
+
+
+def test_invented_duration_is_rejected_and_the_model_asks(
+    state: SessionState, base: BaseData
+) -> None:
+    invented = {"title": "Haircut", "duration_min": 60, "duration_quote": "60 minutes"}
+    model = ScriptedModel(call("add_task", invented), AIMessage("How long will it take?"))
+    _, result = start(model, base, state, said=HAIRCUT)
+    [reply] = tool_replies(result)
+    assert "[unstated_value]" in reply
+    assert "do not guess: ask the user for it" in reply
+    assert result["session"] == state
+    assert result["messages"][-1].content == "How long will it take?"
+
+
+def test_a_value_stated_in_the_next_turn_is_accepted(state: SessionState, base: BaseData) -> None:
+    stated = {"title": "Haircut", "duration_min": 60, "duration_quote": "About an  HOUR"}
+    model = ScriptedModel(
+        AIMessage("How long will it take?"), call("add_task", stated), AIMessage("Added.")
+    )
+    graph, _ = start(model, base, state, said=HAIRCUT)
+    final = graph.invoke({"messages": [HumanMessage("about an hour")]}, CONFIG)
+    assert "Added T6" in tool_replies(final)[0]
+    assert final["session"].task("T6").duration_min == 60
+
+
+def test_words_from_an_earlier_turn_do_not_count(state: SessionState, base: BaseData) -> None:
+    stale = {"title": "Haircut", "duration_min": 60, "duration_quote": "about an hour"}
+    model = ScriptedModel(AIMessage("Noted."), call("add_task", stale), AIMessage("Sorry."))
+    graph, _ = start(model, base, state, said="the gym takes about an hour")
+    final = graph.invoke({"messages": [HumanMessage(HAIRCUT)]}, CONFIG)
+    assert "[unstated_value]" in tool_replies(final)[0]
+
+
+def test_pasted_words_do_not_count(state: SessionState, base: BaseData) -> None:
+    pasted: dict[str, object] = {
+        "title": "Reply",
+        "deadline": "2026-10-30",
+        "deadline_quote": "by Friday",
+    }
+    model = ScriptedModel(call("add_task", pasted), AIMessage("Shall I add it?"))
+    _, result = start(model, base, state, said=forwarded("Please reply by Friday."))
+    assert "[unstated_value]" in tool_replies(result)[0]

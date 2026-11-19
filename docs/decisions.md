@@ -94,3 +94,26 @@ Short records of choices that are not obvious from the code: context, decision, 
 - Decision: `SessionState.last_task_number` holds the highest number handed out; the next id is
   one above it.
 - Consequence: ids can have gaps. Older exports load with the mark taken from their tasks.
+
+## A duration or deadline must quote the user
+- Context: the rules say never guess, yet the model invented `duration_min=60` and a deadline
+  for "Add a haircut at the salon in Bangsar this week" in 10 of 10 runs; nothing in code
+  stopped it.
+- Decision: `add_task` and `update_task` carry `duration_quote` and `deadline_quote`, the user's
+  words that state the value. Validation rejects a duration or deadline whose quote is missing,
+  blank, or not found (ignoring case and spacing) in the user's messages since the assistant's
+  last plain reply, and tells the model to ask instead of guessing. A pasted message (wrapped by
+  `forwarded`) is someone else's words and never counts. The graph hands the turn's texts to
+  `validate_call` as plain strings, so `app` stays framework-free. Quotes are never stored; an
+  update that changes neither value needs none.
+- Consequence: a value given in an earlier turn must be restated, and a quote proves only that
+  the words were said, not that the number matches them. Personas and loaded files are not
+  checked.
+
+## Datetimes as the model writes them
+- Context: the model adds a "Z" or sends a date-only deadline; both were rejected and used up
+  the retry cap.
+- Decision: a trailing "Z" is dropped and the time read on the session's naive clock (the model
+  adds it by habit, not to mean UTC). A date-only deadline means 23:59 that day, as in the
+  personas. A date-only start or check time is still rejected: its time cannot be inferred.
+- Consequence: other offsets such as `+08:00` are still rejected.

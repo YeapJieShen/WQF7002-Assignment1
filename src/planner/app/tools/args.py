@@ -19,17 +19,58 @@ from planner.domain.models import Mode, TaskStatus, TaskType
 
 Duration = Annotated[int, Field(strict=True, ge=5, le=720)]
 Text = Annotated[str, Field(strict=True, min_length=1)]
+DurationQuote = Annotated[
+    str | None,
+    Field(
+        strict=True,
+        description="Required with duration_min: the user's own words that state it, copied "
+        "exactly, like 'about an hour'. If the user gave no duration, omit both.",
+    ),
+]
+DeadlineQuote = Annotated[
+    str | None,
+    Field(
+        strict=True,
+        description="Required with deadline: the user's own words that state it, copied "
+        "exactly, like 'by Friday'. If the user gave no deadline, omit both.",
+    ),
+]
+QUOTE_FIELDS: Final = frozenset({"duration_quote", "deadline_quote"})
+"""Evidence for a stated value: checked by validation, never stored on a task."""
+END_OF_DAY: Final = dt.time(23, 59)
+"""The time a date-only deadline is read as."""
+
+
+def _drop_z(value: object) -> object:
+    """Read a trailing "Z" as the session's own clock: the model adds it out of habit."""
+    if isinstance(value, str) and value[-1:] in {"Z", "z"}:
+        return value[:-1]
+    return value
 
 
 def _require_time(value: object) -> object:
     """Reject date-only strings: pydantic would read them as midnight, silently wrong."""
+    value = _drop_z(value)
     if isinstance(value, str) and "T" not in value:
         msg = "must include a time, like 2026-10-28T17:15"
         raise PydanticCustomError("bad_datetime", msg)
     return value
 
 
+def _end_of_day(value: object) -> object:
+    """Read a date-only deadline as the end of that day, not its midnight start."""
+    value = _drop_z(value)
+    if isinstance(value, str) and "T" not in value:
+        try:
+            day = dt.date.fromisoformat(value)
+        except ValueError:
+            return value  # let the datetime parser report it
+        return dt.datetime.combine(day, END_OF_DAY)
+    return value
+
+
 TimeOfDay = Annotated[NaiveDatetime, BeforeValidator(_require_time)]
+Deadline = Annotated[NaiveDatetime, BeforeValidator(_end_of_day)]
 
 
 class ToolArgs(BaseModel):
@@ -41,14 +82,19 @@ class ToolArgs(BaseModel):
 
 
 class AddTaskArgs(ToolArgs):
-    """Capture a task. Omit anything the user has not said; never guess a duration or place."""
+    """Capture a task. Omit anything the user has not said; never guess a duration or place.
+
+    A duration or deadline needs its quote: the user's words that state it.
+    """
 
     tool_name: ClassVar[str] = "add_task"
 
     title: Text
     type: TaskType | None = None
     duration_min: Duration | None = None
-    deadline: TimeOfDay | None = None
+    duration_quote: DurationQuote = None
+    deadline: Deadline | None = None
+    deadline_quote: DeadlineQuote = None
     place: Text | None = None
     earliest_start: TimeOfDay | None = None
     prerequisites: tuple[Text, ...] = ()
@@ -62,7 +108,9 @@ class TaskPatch(BaseModel):
     title: Text | None = None
     type: TaskType | None = None
     duration_min: Duration | None = None
-    deadline: TimeOfDay | None = None
+    duration_quote: DurationQuote = None
+    deadline: Deadline | None = None
+    deadline_quote: DeadlineQuote = None
     place: Text | None = None
     earliest_start: TimeOfDay | None = None
     prerequisites: tuple[Text, ...] | None = None
@@ -70,9 +118,13 @@ class TaskPatch(BaseModel):
 
     @model_validator(mode="after")
     def _not_empty(self) -> Self:
-        if not self.model_dump(exclude_none=True):
+        if not self.changes():
             raise PydanticCustomError("bad_value", "at least one field must be given")
         return self
+
+    def changes(self) -> dict[str, object]:
+        """The task fields to change, without the quotes that back them."""
+        return self.model_dump(exclude_none=True, exclude=set(QUOTE_FIELDS))
 
 
 class UpdateTaskArgs(ToolArgs):

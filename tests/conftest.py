@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 import os
 from collections.abc import Callable
+from typing import Final
 
 import pytest
 
@@ -12,6 +13,8 @@ from planner.domain.errors import ErrorCode
 from planner.domain.models import BaseData, SessionState
 
 Codes = Callable[[object, object], list[ErrorCode]]
+SAID: Final = "Add it, about 45 minutes, by Friday"
+"""What the user said this turn in tests that need a stated duration or deadline."""
 
 
 @pytest.fixture(scope="session")
@@ -26,10 +29,10 @@ def state() -> SessionState:
 
 @pytest.fixture
 def codes(state: SessionState, base: BaseData) -> Codes:
-    """Validate a call against persona_wednesday; return its error codes ([] if accepted)."""
+    """Validate a call against persona_wednesday, the user having said `SAID`; return its codes."""
 
     def run(name: object, args: object) -> list[ErrorCode]:
-        verdict = validate_call(name, args, state, base)
+        verdict = validate_call(name, args, state, base, said=(SAID,))
         return [] if isinstance(verdict, Accepted) else [i.code for i in verdict.issues]
 
     return run

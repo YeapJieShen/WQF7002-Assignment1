@@ -69,6 +69,12 @@ def test_update_changes_only_given_fields(state: SessionState) -> None:
     assert "duration_min" in result.message
 
 
+def test_update_does_not_store_the_quotes(state: SessionState) -> None:
+    patch = TaskPatch(duration_min=30, duration_quote="30 min")
+    result = update_task(state, UpdateTaskArgs(task_id="T3", fields=patch))
+    assert result.message == "Updated T3: duration_min."
+
+
 def test_update_can_mark_done(state: SessionState) -> None:
     patch = TaskPatch(status=TaskStatus.DONE)
     after = update_task(state, UpdateTaskArgs(task_id="T4", fields=patch)).state.task("T4")

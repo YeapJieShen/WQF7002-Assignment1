@@ -68,7 +68,7 @@ def add_task(state: SessionState, args: AddTaskArgs) -> ToolResult:
 
 def update_task(state: SessionState, args: UpdateTaskArgs) -> ToolResult:
     """Change the given fields of a task."""
-    changes = args.fields.model_dump(exclude_none=True)
+    changes = args.fields.changes()
     tasks = tuple(
         Task.model_validate({**t.model_dump(), **changes}) if t.id == args.task_id else t
         for t in state.tasks
