@@ -37,6 +37,10 @@
     {"origin": "workshop", "destination": "pharmacy", "mode": "drive", "minutes": 10, "buffer_min": 5},
     {"origin": "grocery", "destination": "post_office", "mode": "drive", "minutes": 8, "buffer_min": 5},
     {"origin": "grocery", "destination": "pharmacy", "mode": "drive", "minutes": 5, "buffer_min": 5},
-    {"origin": "post_office", "destination": "pharmacy", "mode": "drive", "minutes": 7, "buffer_min": 5}
+    {"origin": "post_office", "destination": "pharmacy", "mode": "drive", "minutes": 7, "buffer_min": 5},
+    {"origin": "workshop", "destination": "library", "mode": "drive", "minutes": 30, "buffer_min": 10},
+    {"origin": "grocery", "destination": "library", "mode": "drive", "minutes": 20, "buffer_min": 10},
+    {"origin": "post_office", "destination": "library", "mode": "drive", "minutes": 20, "buffer_min": 10},
+    {"origin": "pharmacy", "destination": "library", "mode": "drive", "minutes": 20, "buffer_min": 10}
   ]
 }
