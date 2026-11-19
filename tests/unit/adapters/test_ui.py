@@ -1,3 +1,4 @@
+import inspect
 import json
 import random
 from datetime import datetime
@@ -317,6 +318,18 @@ def test_exactly_one_endpoint_is_public_and_the_key_is_not_among_its_inputs() ->
     key = next(b for b in app.blocks.values() if getattr(b, "label", None) == "API key")
     assert key._id not in [c._id for c in public[0].inputs]
     assert {type(c).__name__ for c in public[0].inputs} == {"Textbox", "Chatbot", "State"}
+
+
+def test_the_confirmation_buttons_stream_into_the_chat() -> None:
+    # Gradio streams a handler only if it is itself a generator function; given a plain function
+    # that returns a generator, it posts the generator object to the chat, which then fails.
+    ctl = controller()
+    app = build_app(FakeBackend(ScriptedModel()), settings(), controller=ctl)
+    answers = [
+        f for f in app.fns.values() if f.fn is not None and f.fn.__name__ in {"approve", "decline"}
+    ]
+    assert len(answers) == 2
+    assert all(inspect.isgeneratorfunction(f.fn) for f in answers)
 
 
 def test_a_caller_without_a_page_gets_a_tab_of_its_own() -> None:
