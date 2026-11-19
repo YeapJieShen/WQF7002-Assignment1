@@ -8,6 +8,7 @@ the run history, since the key only ever reaches the private `connect` handler.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import random
@@ -101,6 +102,12 @@ CHARGE_NOTICE: Final = (
     "Only OpenAI-compatible chat endpoints are supported: a `/v1` base URL whose model supports "
     "tool calling."
 )
+HELP_HTML: Final = (
+    '<span class="help" title="'
+    + html.escape(CHARGE_NOTICE.replace("**", "").replace("`", ""))
+    + '">Endpoint details <b>?</b></span>'
+)
+"""The notice behind a small "?" that shows it on hover, so it does not fill the sidebar."""
 THEME: Final = gr.themes.Soft(
     primary_hue="indigo",
     secondary_hue="slate",
@@ -381,6 +388,17 @@ class Controller:
         )
         return f"Using {custom.model} at {custom.base_url}.", ""
 
+    def choose(self, tab: Tab | None, choice: str) -> tuple[Any, str | Any]:
+        """Show the endpoint fields only for "My own endpoint"; the default model applies at once.
+
+        Returns:
+            An update for the endpoint fields' visibility, and a status line.
+        """
+        fields = gr.update(visible=choice == "custom")
+        if choice == "custom":
+            return fields, gr.skip()
+        return fields, self.connect(tab, "default", "", "", "")[0]
+
     def pace_changed(self, tab: Tab | None, *values: Any) -> go.Figure:  # noqa: ANN401 - one value per pace control, of mixed types
         """Apply the pace controls to the session and return the updated chart."""
         live = _live(tab)
@@ -621,20 +639,22 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
             gr.Markdown("### Session")
             demo_btn = gr.Button("Try a demo", size="sm")
             gr.Markdown("### Model")
-            choice = gr.Radio(
+            choice = gr.Dropdown(
                 [("Default model", "default"), ("My own endpoint", "custom")],
                 value="default",
-                label="Backend",
+                show_label=False,
+                filterable=False,
             )
             with gr.Group(visible=False) as own:
+                gr.HTML(HELP_HTML)
                 url = gr.Textbox(
                     label="Base URL", placeholder="https://api.example.com/v1", max_lines=1
                 )
                 model = gr.Textbox(label="Model", max_lines=1)
                 key = gr.Textbox(label="API key", type="password", max_lines=1)
-                gr.Markdown(CHARGE_NOTICE)
-            apply_btn = gr.Button("Use this backend", variant="primary", size="sm")
+                apply_btn = gr.Button("Use this endpoint", variant="primary", size="sm")
             status = gr.Markdown()
+            gr.Markdown("### Account")
             gr.LoginButton()
 
         pace: list[Any] = [daily, consecutive, long_break, distribution, hardest, *per_day]
@@ -652,9 +672,7 @@ def build_app(  # noqa: PLR0915 - the layout is one flat declaration of componen
         import_btn.upload(ctl.import_state, [tab, import_btn], reset, api_visibility="private")
         export_btn.click(ctl.export_state, tab, download, api_visibility="private")
         transcript_btn.click(ctl.export_transcript, tab, download, api_visibility="private")
-        choice.change(
-            lambda c: gr.update(visible=c == "custom"), choice, own, api_visibility="private"
-        )
+        choice.change(ctl.choose, [tab, choice], [own, status], api_visibility="private")
         apply_btn.click(
             ctl.connect, [tab, choice, url, model, key], [status, key], api_visibility="private"
         )
