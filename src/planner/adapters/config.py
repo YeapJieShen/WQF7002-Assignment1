@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Sent as the bearer token when none is given: Ollama ignores it but the client requires one.
@@ -70,6 +71,10 @@ class Settings(BaseSettings):
         upload_max_bytes: Hard transport limit on any upload, passed to Gradio's `max_file_size`.
             Gradio rejects a larger file with a generic error, so keep it above
             `import_max_bytes`; it is only a backstop.
+        log_level: Lowest severity the app logs: DEBUG, INFO, WARNING or ERROR. INFO records
+            events, timings and counts; DEBUG adds user message text and tool arguments, so keep
+            it off on a public deployment.
+        log_format: "json" (one JSON object per line, for log collectors) or "text" (readable).
     """
 
     model_config = SettingsConfigDict(
@@ -94,6 +99,13 @@ class Settings(BaseSettings):
     message_max_chars: int = Field(default=4000, ge=1)
     import_max_bytes: int = Field(default=1_000_000, ge=1)
     upload_max_bytes: int = Field(default=10_000_000, ge=1)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper_case_level(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def _backstop_above_import_limit(self) -> Self:
@@ -101,3 +113,12 @@ class Settings(BaseSettings):
             msg = "upload_max_bytes must exceed import_max_bytes, or Gradio hides our message"
             raise ValueError(msg)
         return self
+
+    def summary(self) -> dict[str, Any]:
+        """Return the settings as plain values for the start-up log, without any API key."""
+        out = self.model_dump(exclude={"llm_endpoints"})
+        out["llm_endpoints"] = [
+            {"name": e.name, "host": urlsplit(e.base_url).hostname, "model": e.model}
+            for e in self.llm_endpoints
+        ]
+        return out
