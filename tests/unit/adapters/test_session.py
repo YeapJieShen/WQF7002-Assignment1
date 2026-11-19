@@ -177,3 +177,20 @@ def test_done_sums_token_usage_over_the_turn(state: SessionState, base: BaseData
     session = Session(model, base, "rules", state, max_rejections=3)
     *_, done = session.stream("add A")
     assert done == Done(Reply("Ok."), Usage(input_tokens=30, output_tokens=2))
+
+
+def test_done_sums_cached_tokens_and_treats_a_missing_report_as_zero(
+    state: SessionState, base: BaseData
+) -> None:
+    def used(message: AIMessage, details: dict[str, int] | None) -> AIMessage:
+        usage: dict[str, Any] = {"input_tokens": 10, "output_tokens": 1, "total_tokens": 11}
+        if details is not None:
+            usage["input_token_details"] = details
+        return message.model_copy(update={"usage_metadata": usage})
+
+    model = ScriptedModel(
+        used(call("add_task", {"title": "A"}), {"cache_read": 4}), used(AIMessage("Ok."), None)
+    )
+    session = Session(model, base, "rules", state, max_rejections=3)
+    *_, done = session.stream("add A")
+    assert done == Done(Reply("Ok."), Usage(input_tokens=20, output_tokens=2, cached_tokens=4))

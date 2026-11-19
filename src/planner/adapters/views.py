@@ -163,9 +163,15 @@ def thinking(tick: int, tool: str | None = None) -> Message:
     return {"role": "assistant", "content": f'<span class="spinner"></span>{text}'}
 
 
+USAGE_HINT: Final = "Tokens the model read / wrote this turn, across all its calls"
+
+
 def usage_line(seconds: float, usage: Usage | None) -> str:
-    """Summarise a turn, such as `1,200 In / 40 Out Tokens · 3.2 s` (the page italicises it)."""
-    parts = [f"{usage.input_tokens:,} In / {usage.output_tokens:,} Out Tokens"] if usage else []
+    """Summarise a turn, such as `1,200 In (900 Cached) / 40 Out Tokens · 3.2 s`."""
+    parts = []
+    if usage:
+        cached = f" ({usage.cached_tokens:,} Cached)" if usage.cached_tokens else ""
+        parts = [f"{usage.input_tokens:,} In{cached} / {usage.output_tokens:,} Out Tokens"]
     return " · ".join([*parts, f"{seconds:.1f} s"])
 
 
@@ -175,7 +181,7 @@ def usage_footer(seconds: float, usage: Usage | None) -> str:
     Gradio 6.31 has no per-message footer, so the reply carries this span and a few lines of
     CSS (`.turn-usage` in `ui.CSS`) place it under the message's copy button.
     """
-    return f'<span class="turn-usage">{usage_line(seconds, usage)}</span>'
+    return f'<span class="turn-usage" title="{USAGE_HINT}">{usage_line(seconds, usage)}</span>'
 
 
 def examples(state: SessionState, base: BaseData, rng: Random) -> list[dict[str, str]]:

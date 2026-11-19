@@ -25,8 +25,9 @@ CALL = '<tool_call>\n{"name": "add_task", "arguments": {"title": "Post parcel"}}
 class FakeEngine:
     """Replies from a script, in fixed pieces; counts words as tokens."""
 
-    def __init__(self, *replies: list[str]) -> None:
+    def __init__(self, *replies: list[str], cached: int = 0) -> None:
         self._replies = iter(replies)
+        self._cached = cached
         self.prompts: list[tuple[Any, Any]] = []
 
     def render(self, chat: Any, tools: Any, /) -> str:
@@ -35,6 +36,9 @@ class FakeEngine:
 
     def count(self, text: str, /) -> int:
         return len(text.split())
+
+    def cached(self, prompt: str, /) -> int:  # noqa: ARG002 - fixed answer
+        return self._cached
 
     def generate(self, prompt: str, /) -> Iterator[str]:  # noqa: ARG002 - fixed script
         yield from next(self._replies)
@@ -337,3 +341,23 @@ def test_cache_options_on_passes_the_cached_first_turn() -> None:
 
 def test_cache_options_on_falls_back_when_the_prompt_has_no_first_turn() -> None:
     assert zerogpu.cache_options(prefix_cache([]), "no marker", ids("no marker")) == {}
+
+
+def test_usage_reports_the_cached_prompt_tokens_when_the_engine_has_them() -> None:
+    reply = template_chat(FakeEngine(["Hello ", "there."], cached=2)).invoke([HumanMessage("hi")])
+    assert reply.usage_metadata == {
+        "input_tokens": 3,
+        "output_tokens": 2,
+        "total_tokens": 5,
+        "input_token_details": {"cache_read": 2},
+    }
+
+
+def test_prefix_cache_reports_how_much_of_a_prompt_it_serves() -> None:
+    cache = prefix_cache([])
+    prompt = f"rules{END}question"
+    assert cache.reused(prompt, ids(prompt)) == 0  # nothing cached yet
+    cache.lookup(prompt, ids(prompt))
+    assert cache.reused(prompt, ids(prompt)) == len(f"rules{END}")
+    assert cache.reused("no turn end", ids("no turn end")) == 0
+    assert cache.reused(prompt, ids("other text entirely")) == 0

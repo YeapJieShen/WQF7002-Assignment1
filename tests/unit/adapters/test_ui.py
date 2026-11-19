@@ -59,7 +59,7 @@ def chat(ctl: Controller, tab: Tab | None, text: str, profile: Any = None) -> li
 def reply(chat: list[dict[str, Any]]) -> str:
     """The last message's text without its usage footer."""
     content: str = chat[-1]["content"]
-    return content.split('\n\n<span class="turn-usage">', maxsplit=1)[0]
+    return content.split('\n\n<span class="turn-usage"', maxsplit=1)[0]
 
 
 def test_a_new_tab_starts_empty_on_the_real_clock() -> None:
@@ -121,7 +121,9 @@ def test_chat_streams_the_reply_and_refresh_shows_the_new_tasks() -> None:
     assert box["interactive"] is True
     assert card["visible"] is False
     assert (chip, question) == ("📍 Home", "")
-    assert re.search(r'<span class="turn-usage">\d+\.\d s</span>$', frames[-1][0][-1]["content"])
+    assert re.search(
+        r'<span class="turn-usage" title="[^"]+">\d+\.\d s</span>$', frames[-1][0][-1]["content"]
+    )
 
 
 def test_blank_and_whitespace_messages_do_nothing() -> None:
