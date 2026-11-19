@@ -138,10 +138,10 @@ CSS: Final = """
   mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
   border-radius: 50%; animation: spin 0.9s linear infinite; vertical-align: -0.1em; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.message-row:has(.turn-usage) { position: relative; margin-bottom: 1.6rem; }
-.message-row:has(.turn-usage) + .message-buttons { margin-bottom: 2.2rem; }
-.turn-usage { position: absolute; left: 0; top: calc(100% + 4.5rem); white-space: nowrap;
-  color: var(--body-text-color-subdued); font-size: var(--text-sm); }
+.bot.message:has(.turn-usage) { position: relative; }
+.bot.message .message:has(.turn-usage) { position: static; }
+.turn-usage { position: absolute; left: 2rem; top: calc(100% + 11px); white-space: nowrap;
+  line-height: 24px; color: var(--body-text-color-subdued); font-size: var(--text-sm); }
 .limits input { font-size: var(--text-sm); }
 .confirm-card { border: 1px solid var(--primary-500) !important; }
 .confirm-card, .confirm-card > * { background: var(--background-fill-primary) !important; }
