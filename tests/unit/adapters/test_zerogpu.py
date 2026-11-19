@@ -197,6 +197,32 @@ def test_invoke_offers_the_tools_and_reports_usage() -> None:
     assert tools == tool_specs()
 
 
+def test_generate_logs_speed(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO", logger="planner.backends")
+    template_chat(FakeEngine(["Hello ", "there."])).invoke([HumanMessage("hi")])
+    [record] = [r for r in caplog.records if r.getMessage() == "generate"]
+    fields = record.fields  # type: ignore[attr-defined]  # set by logs.emit
+    assert fields["tokens_in"] == 3
+    assert fields["tokens_out"] == 2
+    assert fields["first_piece_ms"] is not None
+    assert "tokens_per_s" in fields
+
+
+@pytest.mark.parametrize(
+    ("tokens", "first_ms", "total_ms", "expected"),
+    [
+        (11, 1000.0, 3000.0, 5.0),
+        (1, 1000.0, 3000.0, None),
+        (5, None, 3000.0, None),
+        (5, 100.0, 100.0, None),
+    ],
+)
+def test_tokens_per_s(
+    tokens: int, first_ms: float | None, total_ms: float, expected: float | None
+) -> None:
+    assert zerogpu.tokens_per_s(tokens, first_ms, total_ms) == expected
+
+
 def test_invoke_returns_a_tool_call() -> None:
     reply = template_chat(FakeEngine([CALL])).invoke([HumanMessage("add")])
     assert reply.content == ""
