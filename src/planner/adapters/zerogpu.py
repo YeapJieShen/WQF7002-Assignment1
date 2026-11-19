@@ -263,6 +263,15 @@ class PrefixCache:
             return copy.deepcopy(self._cache)  # generate appends to the cache it is given
 
 
+def cache_options(prefix: PrefixCache | None, prompt: str, ids: Sequence[int]) -> dict[str, Any]:
+    """The `generate` options that reuse the cached first turn; empty when there is no cache.
+
+    `prefix` is None when the `prefix_cache` setting is off, so the whole prompt is prefilled.
+    """
+    cached = None if prefix is None else prefix.lookup(prompt, ids)
+    return {} if cached is None else {"past_key_values": cached}
+
+
 class _Transformers:  # pragma: no cover - needs the model weights and a GPU
     def __init__(self, tokenizer: Any, generate: Any) -> None:  # noqa: ANN401 - untyped libraries
         self._tokenizer = tokenizer
@@ -320,7 +329,7 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
         model.generate(**inputs, past_key_values=cache, max_new_tokens=1, do_sample=False)
         return cache
 
-    prefix = PrefixCache(end_marker, tokenize, build)
+    prefix = PrefixCache(end_marker, tokenize, build) if settings.prefix_cache else None
 
     @spaces.GPU(duration=settings.zerogpu_gpu_duration_s)  # type: ignore[untyped-decorator]  # spaces is untyped
     def generate(prompt: str) -> Iterator[str]:
@@ -332,9 +341,7 @@ def load_engine(settings: Settings) -> Engine:  # pragma: no cover - needs a GPU
             "max_new_tokens": settings.zerogpu_max_new_tokens,
             "stopping_criteria": stops,
         }
-        cached = prefix.lookup(prompt, inputs["input_ids"][0].tolist())
-        if cached is not None:
-            options["past_key_values"] = cached
+        options.update(cache_options(prefix, prompt, inputs["input_ids"][0].tolist()))
         Thread(target=model.generate, kwargs=options, daemon=True).start()
         yield from streamer
 

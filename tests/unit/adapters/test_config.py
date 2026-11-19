@@ -65,3 +65,10 @@ def test_the_upload_backstop_must_exceed_the_import_limit() -> None:
     assert Settings(_env_file=None).upload_max_bytes == 10_000_000
     with pytest.raises(ValidationError, match="upload_max_bytes"):
         Settings(_env_file=None, import_max_bytes=2_000_000, upload_max_bytes=2_000_000)
+
+
+def test_prefix_cache_is_off_by_default_and_set_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PLANNER_PREFIX_CACHE", raising=False)
+    assert Settings(_env_file=None).prefix_cache is False
+    monkeypatch.setenv("PLANNER_PREFIX_CACHE", "true")
+    assert Settings(_env_file=None).prefix_cache is True

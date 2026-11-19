@@ -54,6 +54,7 @@ Defaults are in `src/planner/adapters/config.py`, which is the source of truth.
 | `PLANNER_ZEROGPU_MODEL_REVISION` | unset (latest) | Commit sha or tag of that model to load. |
 | `PLANNER_ZEROGPU_MAX_NEW_TOKENS` | `1024` | Most tokens generated for one reply. |
 | `PLANNER_ZEROGPU_GPU_DURATION_S` | `60` | Seconds of GPU time requested per generation. |
+| `PLANNER_PREFIX_CACHE` | `false` | `zerogpu` only: reuse the cached first turn (rules and tool schemas) across generations. Much faster first token, but outputs can differ slightly (bf16 rounding); untested on a real ZeroGPU Space. |
 | `PLANNER_TOOL_CALL_OPEN` / `PLANNER_TOOL_CALL_CLOSE` | `<tool_call>` / `</tool_call>` | Markers around a tool call in the model's reply (Hermes format; the payload between them must still be Hermes JSON). |
 | `PLANNER_STATE_TTL_S` | `3600` | Seconds an idle tab's conversation is kept on the server. |
 | `PLANNER_CONCURRENCY_LIMIT` | `4` | Chat turns run at once; the rest wait in the queue. |

@@ -52,6 +52,12 @@ class Settings(BaseSettings):
         zerogpu_model_revision: A commit sha or tag of that model to load; None loads the latest.
         zerogpu_max_new_tokens: Most tokens the model may generate for one reply.
         zerogpu_gpu_duration_s: Seconds of GPU time asked for per generation (`@spaces.GPU`).
+        prefix_cache: Reuse the attention cache of the fixed first turn (rules and tool schemas)
+            across generations on the "zerogpu" backend. Cuts the time to the first token from
+            10-40 s to under a second on a 12 GB card, but prefilling in two parts rounds
+            differently in bf16, so wording (rarely a tool choice) can differ from the uncached
+            run. Off by default: untested on a real ZeroGPU Space, where cached GPU memory may
+            not survive between `@spaces.GPU` calls.
         tool_call_open: Text that opens a tool call in the model's reply. The default is the
             Hermes format Qwen3 uses; the payload between the markers must still be Hermes JSON,
             `{"name": ..., "arguments": {...}}`, whatever the markers are.
@@ -88,6 +94,7 @@ class Settings(BaseSettings):
     zerogpu_model_revision: str | None = None
     zerogpu_max_new_tokens: int = Field(default=1024, ge=1)
     zerogpu_gpu_duration_s: int = Field(default=60, ge=1)
+    prefix_cache: bool = False
     tool_call_open: str = Field(default="<tool_call>", min_length=1)
     tool_call_close: str = Field(default="</tool_call>", min_length=1)
     state_ttl_s: int = Field(default=3600, ge=1)
