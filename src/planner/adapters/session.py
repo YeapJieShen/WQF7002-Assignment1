@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """One conversation with the agent: send a message, answer a confirmation, read the session.
 
 `stream` and `resume_stream` yield events while the turn runs: reply tokens, each stage of each

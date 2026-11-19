@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Routes a validated tool call to the handler that carries it out."""
 
 from __future__ import annotations

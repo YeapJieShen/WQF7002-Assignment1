@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Run the challenge cases against a live model and record what happened.
 
 `python -m planner.adapters.evals evals/cases.toml --out evals/results` writes a JSON and a

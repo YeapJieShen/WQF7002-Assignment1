@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Rules about when the agent must stop and ask the user before acting."""
 
 from __future__ import annotations

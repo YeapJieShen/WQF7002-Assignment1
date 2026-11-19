@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 import httpx2  # the openai SDK's HTTP layer; its errors are built from these types
 import openai
 import pytest

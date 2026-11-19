@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Argument models for the eight tools.
 
 Single source of truth: each model yields the JSON schema shown to the LLM and performs the

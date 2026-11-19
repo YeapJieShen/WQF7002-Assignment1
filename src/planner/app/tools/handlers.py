@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """What each tool does once its call has been validated.
 
 Handlers trust their arguments: ids, places and dates were checked by `planner.app.validation`.

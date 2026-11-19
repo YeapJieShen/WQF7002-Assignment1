@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Needs a running backend (see PLANNER_LLM_ENDPOINTS). Never run in CI: `pytest -m llm`."""
 
 import pytest

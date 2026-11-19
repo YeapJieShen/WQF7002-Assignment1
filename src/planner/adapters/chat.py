@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """One browser tab's conversation, without Gradio: the server-side state and the streamed turn.
 
 A `Tab` holds everything the page must not carry back and forth: the session, the visitor's own

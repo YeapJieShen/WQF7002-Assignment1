@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Logged events of whole turns, endpoints and limits, and the privacy rules around them."""
 
 import io

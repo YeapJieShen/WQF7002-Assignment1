@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Loads the packaged base data and sample personas. Read-only: nothing here writes."""
 
 from __future__ import annotations

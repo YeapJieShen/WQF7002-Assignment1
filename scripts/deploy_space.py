@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Upload the app to a Hugging Face Gradio Space running on ZeroGPU.
 
 Usage: python scripts/deploy_space.py <user>/<space>   (log in first with `hf auth login`)

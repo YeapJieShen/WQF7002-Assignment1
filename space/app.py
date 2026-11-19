@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Hugging Face Space entry point: the planner on ZeroGPU, run by the Gradio SDK.
 
 `deploy_space.py` uploads `src/` beside this file; nothing is pip-installed from it.

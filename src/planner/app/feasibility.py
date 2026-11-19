@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Whether a task can be done if the user sets off at a given time.
 
 Pure arithmetic over the state and reference data. It answers yes or no with the reasons;

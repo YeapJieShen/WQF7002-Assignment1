@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Run the app with `planner` or `python -m planner`.
 
 For auto-reload while editing, run `gradio src/planner/__main__.py --watch-dirs src/planner`,

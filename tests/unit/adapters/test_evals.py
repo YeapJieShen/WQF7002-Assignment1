@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 import logging
 from collections.abc import Iterator, Sequence
 from pathlib import Path

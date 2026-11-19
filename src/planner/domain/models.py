@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Core entities of the planner.
 
 Every entity is immutable: a change produces a new object instead of editing the old one.

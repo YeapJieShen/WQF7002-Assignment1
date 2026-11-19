@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Keeps a visitor's own endpoint from being used to reach the server's network.
 
 The visitor's URL is fetched by this server, so an unchecked one makes the app an open proxy

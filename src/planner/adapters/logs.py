@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Structured logging for the app: one `planner` logger tree, JSON lines, one-time setup.
 
 Every module logs through `logging.getLogger("planner.<area>")` with `emit`, which attaches the

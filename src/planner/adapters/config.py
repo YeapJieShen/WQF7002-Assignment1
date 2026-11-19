@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Runtime settings, read from environment variables or a local `.env` file."""
 
 from __future__ import annotations

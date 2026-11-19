@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Qwen3 running in-process with transformers, on a Hugging Face ZeroGPU Space.
 
 The tools go in through the model's chat template; the model answers with plain text or with

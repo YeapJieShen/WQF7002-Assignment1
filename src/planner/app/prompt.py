@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """The session snapshot the model reads before each reply.
 
 The fixed rules live in `resources/rules.md`. The graph sends them as a system message ahead of

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Test doubles for the model and the backend; CI never calls an LLM."""
 
 from collections.abc import Iterator, Sequence

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """Day planning and the "what now" recommendation.
 
 A simplified least-laxity-first scheduler. Laxity (slack) is how much spare time a task has:

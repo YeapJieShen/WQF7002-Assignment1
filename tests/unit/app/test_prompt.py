@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 from planner.app.prompt import forwarded, session_snapshot
 from planner.domain.models import BaseData, SessionState
 

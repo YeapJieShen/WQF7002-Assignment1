@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """One test per logged event family, plus the privacy rules. The model is always scripted."""
 
 import logging

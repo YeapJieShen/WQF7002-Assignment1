@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jie Shen Yeap
+# SPDX-License-Identifier: MIT
 """What the UI shows, built from the session and the base data: tables, chat rows, examples, chart.
 
 Pure functions with no Gradio state, so tests check them directly.
