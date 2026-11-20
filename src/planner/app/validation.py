@@ -60,6 +60,11 @@ _OTHER_AMOUNT: Final = re.compile(
     r"|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|half|quarter)\b"
 )
 """A number left beside the amount ("an hour and a half", "1-2 hours") makes it not plain."""
+_SPLIT: Final = (
+    f"Add longer work as several tasks of at most {MAX_TASK_MIN} minutes each, then plan the day "
+    "with plan_day. The daily limit is the user's own setting, not a reason to refuse: plan_day "
+    "fits what it can, so report the plan, its total and what did not fit"
+)
 _MIN_DEADLINE_QUOTE: Final = 3
 """A deadline quote is the user's relative phrase; this and a letter or digit rule out junk."""
 
@@ -160,7 +165,7 @@ def validate_call(
     try:
         args = tool.model_validate(raw_args)
     except ValidationError as exc:
-        return Rejected(_issues_from_pydantic(exc.errors(), tool))
+        return Rejected(_issues_from_pydantic(exc.errors(), tool, raw_args))
     own = tuple(_normalised(m) for m in said if not is_forwarded(m))
     issues = _MeaningChecker(state, base, own).check(args)
     return Rejected(tuple(issues)) if issues else Accepted(args)
@@ -186,10 +191,13 @@ def creates_cycle(state: SessionState, task_id: str, prerequisites: tuple[str, .
     return False
 
 
-def _issues_from_pydantic(errors: list[ErrorDetails], tool: type[BaseModel]) -> tuple[Issue, ...]:
+def _issues_from_pydantic(
+    errors: list[ErrorDetails], tool: type[BaseModel], raw_args: dict[str, object]
+) -> tuple[Issue, ...]:
     """Turn pydantic errors into issues, one per error except unexpected arguments.
 
     Unexpected arguments are grouped per level, so the valid fields are listed once per level.
+    A duration over the per-task maximum says how to go on, using its quote's amount.
     """
     unexpected: dict[tuple[int | str, ...], list[str]] = {}
     for error in errors:
@@ -201,7 +209,10 @@ def _issues_from_pydantic(errors: list[ErrorDetails], tool: type[BaseModel]) -> 
         code = _code_of(error)
         if code is not ErrorCode.UNEXPECTED_ARG:
             location = ".".join(str(part) for part in error["loc"])
-            issues.append(Issue(code, location or "args", error["msg"]))
+            message = error["msg"]
+            if error["type"] == "less_than_equal" and error["loc"][-1] == "duration_min":
+                message = _too_long(error["input"], _quote_beside(raw_args, error["loc"]))
+            issues.append(Issue(code, location or "args", message))
         elif (parent := error["loc"][:-1]) in unexpected:
             issues.append(_unexpected_issue(tool, parent, unexpected.pop(parent)))
     return tuple(issues)
@@ -235,6 +246,29 @@ def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]
         # Only a nested model forbids extra keys, so every step of the path is a model field.
         model = cast("type[BaseModel]", model.model_fields[str(part)].annotation)
     return list(model.model_fields)
+
+
+def _quote_beside(raw_args: dict[str, object], loc: tuple[int | str, ...]) -> object:
+    """The duration_quote next to the duration_min at `loc`, as the model wrote it."""
+    parent = raw_args
+    for part in loc[:-1]:
+        # pydantic reached the field, so every step of the path is an object.
+        parent = cast("dict[str, object]", parent[str(part)])
+    return parent.get("duration_quote")
+
+
+def _too_long(minutes: object, quote: object) -> str:
+    """Say how to go on with a duration over the per-task maximum, instead of a bare range."""
+    most = (
+        f"{minutes} is more than {MAX_TASK_MIN} minutes ({MAX_TASK_MIN // 60} hours), "
+        "the most for one task"
+    )
+    stated = _minutes_in(_normalised(quote)) if isinstance(quote, str) else None
+    if stated is None:
+        return f"{most}. {_SPLIT}"
+    if stated <= MAX_TASK_MIN:
+        return f"{most}. '{quote}' is {stated} minutes: use {stated}"
+    return f"{most}. '{quote}' is {stated} minutes. {_SPLIT}"
 
 
 def _minutes_in(words: str) -> int | None:
