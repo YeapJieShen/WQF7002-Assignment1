@@ -421,7 +421,11 @@ def test_quote_the_user_did_not_say_is_rejected(state: SessionState, base: BaseD
     args = {"title": "Haircut", "deadline": "2026-11-01T18:00", "deadline_quote": "by Sunday"}
     [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
     assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "deadline_quote")
-    assert "'by Sunday' is not in the user's messages this turn" in issue.message
+    assert issue.message.startswith(
+        "'by Sunday' is not in the user's messages this turn. "
+        "If the user stated the deadline, copy their exact words. "
+        "If the user has not stated a deadline, do not guess"
+    )
 
 
 def test_stated_values_are_accepted_ignoring_case_and_spacing(
@@ -593,6 +597,20 @@ def test_update_of_a_duration_needs_the_users_words(state: SessionState, base: B
 def test_a_quote_alone_is_not_a_change(codes: Codes) -> None:
     args = {"task_id": "T3", "fields": {"duration_quote": "45 minutes"}}
     assert codes("update_task", args) == [ErrorCode.BAD_VALUE]
+
+
+def test_resending_the_stored_value_needs_no_quote(state: SessionState, base: BaseData) -> None:
+    said = ("Schedule 14 hours of assignment work on Friday",)
+    fields = {
+        "title": "Finish assignment part 1",
+        "duration_min": 360,
+        "deadline": "2026-11-01T23:59:00Z",
+        "deadline_quote": "by Sun 11-01 23:59",
+    }
+    assert _issues("update_task", {"task_id": "T1", "fields": fields}, said, state, base) == []
+    moved = {**fields, "deadline": "2026-10-31T23:59"}
+    [issue] = _issues("update_task", {"task_id": "T1", "fields": moved}, said, state, base)
+    assert issue.field == "fields.deadline_quote"
 
 
 # --- datetime formats the model writes -------------------------------------------------------
