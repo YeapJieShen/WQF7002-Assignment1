@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from planner.app.prompt import is_forwarded
 from planner.app.tools.args import (
+    MAX_TASK_MIN,
     TOOLS_BY_NAME,
     AddTaskArgs,
     CheckFeasibilityArgs,
@@ -44,12 +45,25 @@ if TYPE_CHECKING:
 DELETE_ALL: Final = "all"
 """Value of `delete_task.task_id` that targets every task."""
 
-_NUMBER_WORDS: Final = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|an?"
+_WORD_VALUES: Final[dict[str, float]] = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "half": 0.5, "a": 1, "an": 1,
+}  # fmt: skip
+_NUMBER_WORDS: Final = "|".join((*_WORD_VALUES, "half an?"))
 _TIME_UNITS: Final = "minutes?|mins?|hours?|hrs?|h"
 _AMOUNT_OF_TIME: Final = re.compile(
-    rf"\b(?:\d+(?:\.\d+)?\s*|(?:{_NUMBER_WORDS})\s+)(?:{_TIME_UNITS})\b"
+    rf"\b(?:(?P<digits>\d+(?:\.\d+)?)\s*|(?P<word>{_NUMBER_WORDS})\s+)(?P<unit>{_TIME_UNITS})\b"
 )
 """A duration quote must state an amount of time: a number (digits or word) and a unit."""
+_OTHER_AMOUNT: Final = re.compile(
+    r"\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen"
+    r"|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|half|quarter)\b"
+)
+"""A number left beside the amount ("an hour and a half", "1-2 hours") makes it not plain."""
+_NOT_A_REFUSAL: Final = (
+    "The daily limit is the user's own setting, not a reason to refuse: plan_day fits what it "
+    "can, so report the plan, its total and what did not fit"
+)
 _MIN_DEADLINE_QUOTE: Final = 3
 """A deadline quote is the user's relative phrase; this and a letter or digit rule out junk."""
 
@@ -150,7 +164,7 @@ def validate_call(
     try:
         args = tool.model_validate(raw_args)
     except ValidationError as exc:
-        return Rejected(_issues_from_pydantic(exc.errors(), tool))
+        return Rejected(_issues_from_pydantic(exc.errors(), tool, raw_args))
     own = tuple(_normalised(m) for m in said if not is_forwarded(m))
     issues = _MeaningChecker(state, base, own).check(args)
     return Rejected(tuple(issues)) if issues else Accepted(args)
@@ -176,10 +190,13 @@ def creates_cycle(state: SessionState, task_id: str, prerequisites: tuple[str, .
     return False
 
 
-def _issues_from_pydantic(errors: list[ErrorDetails], tool: type[BaseModel]) -> tuple[Issue, ...]:
+def _issues_from_pydantic(
+    errors: list[ErrorDetails], tool: type[BaseModel], raw_args: dict[str, object]
+) -> tuple[Issue, ...]:
     """Turn pydantic errors into issues, one per error except unexpected arguments.
 
     Unexpected arguments are grouped per level, so the valid fields are listed once per level.
+    A duration over the per-task maximum says how to go on, using its quote's amount.
     """
     unexpected: dict[tuple[int | str, ...], list[str]] = {}
     for error in errors:
@@ -191,7 +208,10 @@ def _issues_from_pydantic(errors: list[ErrorDetails], tool: type[BaseModel]) -> 
         code = _code_of(error)
         if code is not ErrorCode.UNEXPECTED_ARG:
             location = ".".join(str(part) for part in error["loc"])
-            issues.append(Issue(code, location or "args", error["msg"]))
+            message = error["msg"]
+            if error["type"] == "less_than_equal" and error["loc"][-1] == "duration_min":
+                message = _too_long(error["input"], _quote_beside(raw_args, error["loc"]))
+            issues.append(Issue(code, location or "args", message))
         elif (parent := error["loc"][:-1]) in unexpected:
             issues.append(_unexpected_issue(tool, parent, unexpected.pop(parent)))
     return tuple(issues)
@@ -225,6 +245,66 @@ def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]
         # Only a nested model forbids extra keys, so every step of the path is a model field.
         model = cast("type[BaseModel]", model.model_fields[str(part)].annotation)
     return list(model.model_fields)
+
+
+def _quote_beside(raw_args: dict[str, object], loc: tuple[int | str, ...]) -> object:
+    """The duration_quote next to the duration_min at `loc`, as the model wrote it."""
+    parent = raw_args
+    for part in loc[:-1]:
+        # pydantic reached the field, so every step of the path is an object.
+        parent = cast("dict[str, object]", parent[str(part)])
+    return parent.get("duration_quote")
+
+
+def _too_long(minutes: object, quote: object) -> str:
+    """Say how to go on with a duration over the per-task maximum, instead of a bare range."""
+    most = (
+        f"{minutes} is more than {MAX_TASK_MIN} minutes ({MAX_TASK_MIN // 60} hours), "
+        "the most for one task"
+    )
+    stated = _minutes_in(_normalised(quote)) if isinstance(quote, str) else None
+    if stated is None:
+        split = f"Add longer work as several tasks of at most {MAX_TASK_MIN} minutes each"
+        return f"{most}. {split}, then plan the day with plan_day. {_NOT_A_REFUSAL}"
+    return f"{most}. '{quote}' is {stated} minutes: {_how_to_use(stated, quote)}"
+
+
+def _share(stated: int) -> int:
+    """The minutes one task holds of a stated amount: all of it, or an equal part if too long."""
+    parts = -(-stated // MAX_TASK_MIN)
+    return -(-stated // parts)
+
+
+def _how_to_use(stated: int, quote: object) -> str:
+    """Tell the model what to write for a stated amount: the number, or the parts to add."""
+    if stated <= MAX_TASK_MIN:
+        return f"use {stated}"
+    parts = -(-stated // MAX_TASK_MIN)
+    return (
+        f"add it as {parts} tasks of {_share(stated)} minutes, each with duration_quote "
+        f"'{quote}', then plan the day with plan_day. {_NOT_A_REFUSAL}"
+    )
+
+
+def _minutes_in(words: str) -> int | None:
+    """The minutes a normalised quote states, or None unless it holds one plain amount."""
+    found = list(_AMOUNT_OF_TIME.finditer(words))
+    if len(found) != 1:
+        return None
+    match = found[0]
+    if _OTHER_AMOUNT.search(f"{words[: match.start()]} {words[match.end() :]}"):
+        return None
+    digits, word = match["digits"], match["word"]
+    number = float(digits) if digits else _WORD_VALUES[word.split()[0]]
+    return round(number * (1 if match["unit"].startswith("m") else 60))
+
+
+def _wrong_amount(minutes: int, words: str) -> int | None:
+    """The amount a quote states, when `minutes` is not its share within a tenth."""
+    stated = _minutes_in(words)
+    if stated is None or abs(minutes - _share(stated)) * 10 <= _share(stated):
+        return None  # not one plain amount, or a match
+    return stated
 
 
 def _normalised(text: str) -> str:
@@ -304,10 +384,16 @@ class _MeaningChecker:
 
     def _check_update(self, args: UpdateTaskArgs) -> list[Issue]:
         patch = args.fields
+        current = self.state.task(args.task_id)
+        # Resending the stored value is not a change, so it needs no quote.
+        duration = (
+            None if current and patch.duration_min == current.duration_min else patch.duration_min
+        )
+        deadline = None if current and patch.deadline == current.deadline else patch.deadline
         issues = [
             *self._known_tasks((args.task_id,), "task_id"),
-            *self._stated(patch.duration_min, patch.duration_quote, "duration", "fields."),
-            *self._stated(patch.deadline, patch.deadline_quote, "deadline", "fields."),
+            *self._stated(duration, patch.duration_quote, "duration", "fields."),
+            *self._stated(deadline, patch.deadline_quote, "deadline", "fields."),
             *self._in_horizon(patch.deadline, "fields.deadline"),
             *self._in_horizon(patch.earliest_start, "fields.earliest_start"),
             *self._known_place(patch.place, "fields.place", allow_anywhere=True),
@@ -320,7 +406,6 @@ class _MeaningChecker:
                         ErrorCode.CYCLE, "fields.prerequisites", "would create a dependency cycle"
                     )
                 )
-        current = self.state.task(args.task_id)
         if current is not None:
             merged = current.model_copy(update=patch.changes())
             issues += _task_consistency("fields.", merged.type, merged)
@@ -336,9 +421,15 @@ class _MeaningChecker:
         if not words:
             problem = f"{value_field} needs {quote_field}, the user's own words that state it"
         elif not any(words in message for message in self.said):
-            problem = f"'{quote}' is not in the user's messages this turn"
+            problem = (
+                f"'{quote}' is not in the user's messages this turn. If the user stated the "
+                f"{what}, copy their exact words"
+            )
         elif not _states(what, words):
             problem = f"'{quote}' does not state a {what}"
+        elif isinstance(value, int) and (stated := _wrong_amount(value, words)) is not None:
+            message = f"'{quote}' is {stated} minutes, not {value}: {_how_to_use(stated, quote)}"
+            return [Issue(ErrorCode.UNSTATED_VALUE, value_field, message)]
         else:
             return []
         advice = f"do not guess: ask the user for it, or leave {value_field} out"
