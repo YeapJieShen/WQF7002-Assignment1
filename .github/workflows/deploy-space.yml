@@ -1,0 +1,39 @@
+name: deploy-space
+# Mirrors main to the Hugging Face Space: the GitHub commit plus one commit that adds the Space's
+# metadata header to README.md. See the README's Deploy section and docs/decisions.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-space
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE: ${{ vars.HF_SPACE || 'JieShenYeap/planning-delegate' }}
+    steps:
+      - name: Check for the token
+        if: env.HF_TOKEN == ''
+        run: echo "::notice title=Space not deployed::The HF_TOKEN secret is not set; see the README's Deploy section."
+      - uses: actions/checkout@v7
+        if: env.HF_TOKEN != ''
+        with:
+          fetch-depth: 0
+      - name: Add the Space header commit
+        if: env.HF_TOKEN != ''
+        run: |
+          cat space/space-header.yml README.md > README.space.md
+          mv README.space.md README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --all --message "Space header for ${GITHUB_SHA}"
+      - name: Push to the Space
+        if: env.HF_TOKEN != ''
+        # The commit is rebuilt on every run, so this is always a force push, to the Space only.
+        run: git push --force "https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main

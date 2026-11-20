@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- The Space is a mirror of `main`, deployed by GitHub Actions (`deploy-space.yml`) as the GitHub
+  commit plus one commit that adds the Space's metadata header. `space/README.md`,
+  `space/requirements.txt` and `scripts/deploy_space.py` are gone; the root `requirements.txt` now
+  also pins `spaces` and `transformers`, and `pydantic` moved to 2.12.5 to match the Space image.
 - UI refresh: one row per tool call with a status badge, a pending line with a spinner that
   rotates its words (`PLANNER_THINKING_ROTATE_S`), each turn's seconds and tokens under the chat,
   a smooth Plotly Pace chart in date order, always-visible weekday limits with one reset button, a
