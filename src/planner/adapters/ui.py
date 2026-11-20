@@ -156,8 +156,10 @@ CSS: Final = (
 .compact table, .compact td, .compact th { font-size: 0.85rem !important; }
 .header { flex-wrap: wrap; align-items: center; }
 .header > div:first-child { flex: 1 0 100% !important; }
-.toolbar { justify-content: flex-end; flex-wrap: nowrap; flex: 0 0 auto !important; width: auto;
+.toolbar { justify-content: flex-end; flex-wrap: nowrap; flex: 0 0 auto !important;
   margin-left: auto; }
+/* !important: under SSR Gradio's `div.svelte-*` rule (width: 100%) outranks a plain class. */
+.header > .toolbar { width: auto !important; }
 .toolbar button { flex-direction: row !important; flex-wrap: nowrap !important;
   align-items: center; justify-content: center; white-space: nowrap; gap: var(--spacing-sm);
   width: max-content !important; min-width: max-content !important;

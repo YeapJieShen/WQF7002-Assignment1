@@ -482,6 +482,14 @@ def test_the_endpoint_help_is_sized_by_its_row_not_by_the_question_mark() -> Non
     assert "position" not in mark.group(1)
 
 
+def test_the_toolbar_width_wins_over_gradios_full_width_row_rule_under_ssr() -> None:
+    # Under SSR Gradio's `div.svelte-*` rule (width: 100%) outranks a plain class, so the
+    # toolbar filled the header and wrapped below the chip even on a wide screen.
+    rule = re.search(r"\.header > \.toolbar \{([^}]*)\}", CSS)
+    assert rule is not None
+    assert "width: auto !important" in rule.group(1)
+
+
 def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
     assert MAX_MIN == 24 * 60
     assert Pace(daily_limit_min=MAX_MIN).daily_limit_min == MAX_MIN
