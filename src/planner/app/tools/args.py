@@ -34,7 +34,7 @@ DeadlineQuote = Annotated[
     Field(
         strict=True,
         description="Required with deadline: the user's own words that state it, copied "
-        "exactly, like 'by Friday'. If the user gave no deadline, omit both.",
+        "exactly from their message. If the user gave no deadline, omit both.",
     ),
 ]
 QUOTE_FIELDS: Final = frozenset({"duration_quote", "deadline_quote"})
