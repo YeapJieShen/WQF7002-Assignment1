@@ -266,13 +266,23 @@ def _too_long(minutes: object, quote: object) -> str:
     if stated is None:
         split = f"Add longer work as several tasks of at most {MAX_TASK_MIN} minutes each"
         return f"{most}. {split}, then plan the day with plan_day. {_NOT_A_REFUSAL}"
-    if stated <= MAX_TASK_MIN:
-        return f"{most}. '{quote}' is {stated} minutes: use {stated}"
+    return f"{most}. '{quote}' is {stated} minutes: {_how_to_use(stated, quote)}"
+
+
+def _share(stated: int) -> int:
+    """The minutes one task holds of a stated amount: all of it, or an equal part if too long."""
     parts = -(-stated // MAX_TASK_MIN)
-    split = f"add it as {parts} tasks of {-(-stated // parts)} minutes, each with duration_quote"
+    return -(-stated // parts)
+
+
+def _how_to_use(stated: int, quote: object) -> str:
+    """Tell the model what to write for a stated amount: the number, or the parts to add."""
+    if stated <= MAX_TASK_MIN:
+        return f"use {stated}"
+    parts = -(-stated // MAX_TASK_MIN)
     return (
-        f"{most}. '{quote}' is {stated} minutes: {split} '{quote}', "
-        f"then plan the day with plan_day. {_NOT_A_REFUSAL}"
+        f"add it as {parts} tasks of {_share(stated)} minutes, each with duration_quote "
+        f"'{quote}', then plan the day with plan_day. {_NOT_A_REFUSAL}"
     )
 
 
@@ -290,10 +300,10 @@ def _minutes_in(words: str) -> int | None:
 
 
 def _wrong_amount(minutes: int, words: str) -> int | None:
-    """The amount a quote states, when `minutes` differs from it by more than a tenth."""
+    """The amount a quote states, when `minutes` is not its share within a tenth."""
     stated = _minutes_in(words)
-    if stated is None or stated > MAX_TASK_MIN or abs(minutes - stated) * 10 <= stated:
-        return None  # not one plain amount, a part of work too long for one task, or a match
+    if stated is None or abs(minutes - _share(stated)) * 10 <= _share(stated):
+        return None  # not one plain amount, or a match
     return stated
 
 
@@ -418,7 +428,7 @@ class _MeaningChecker:
         elif not _states(what, words):
             problem = f"'{quote}' does not state a {what}"
         elif isinstance(value, int) and (stated := _wrong_amount(value, words)) is not None:
-            message = f"'{quote}' is {stated} minutes, not {value}: use {stated}"
+            message = f"'{quote}' is {stated} minutes, not {value}: {_how_to_use(stated, quote)}"
             return [Issue(ErrorCode.UNSTATED_VALUE, value_field, message)]
         else:
             return []
