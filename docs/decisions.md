@@ -116,16 +116,17 @@ Short records of choices that are not obvious from the code: context, decision, 
   The duration must also be the amount its quote states (within a tenth); the rejection gives
   the number ("'2 hours' is 120 minutes, not 60: use 120"). Only a plain amount is checked: a
   quote with a second number ("an hour and a half", "1-2 hours", "2 hours 30 minutes") is
-  accepted as is. A quoted amount over the 720-minute task maximum allows any part up to it.
+  accepted as is. A quoted amount over the 720-minute task maximum is split into equal parts
+  (840 is 2 x 420), and each task must hold one part: a free choice let `duration_min=14` pass.
   A duration over that maximum is rejected with the quote's minutes and how to go on ("add it as
   2 tasks of 420 minutes, each with duration_quote '14 hours'", then `plan_day`; the daily limit
   is the user's setting, not a reason to refuse). Naming the parts and the quote matters: told
   only "several tasks", the model quoted its own "7 hours" and was rejected as unstated. It
   replaces pydantic's bare "less than or equal to 720": for "Schedule 14 hours of assignment
   work on Friday" the model sent 1440 quoting "14 hours", read 720 as the daily limit, and refused.
-- Consequence: a value given in an earlier turn must be restated. The parts of work too long for
-  one task are not summed against the quote. A deadline quote proves only that the words were
-  said, not the date. Personas and loaded files are not checked.
+- Consequence: a value given in an earlier turn must be restated. The number of parts added is
+  not counted against the quote. A deadline quote proves only that the words were said, not the
+  date. Personas and loaded files are not checked.
 
 ## Datetimes as the model writes them
 - Context: the model adds a "Z" or sends a date-only deadline; both were rejected and used up

@@ -503,7 +503,6 @@ def test_an_updated_duration_must_be_the_amount_its_quote_states(
         ("1-2 hours", 90),
         ("2 hours 30 minutes", 150),
         ("twenty five minutes", 25),
-        ("14 hours", 420),  # a part of work too long for one task
     ],
 )
 def test_an_amount_that_is_not_plain_is_not_checked(
@@ -528,6 +527,12 @@ def test_a_duration_too_long_for_one_task_says_how_to_go_on(
     )
     part = {**args, "duration_min": 420}
     assert _issues("add_task", part, said, state, base) == []
+    [wrong] = _issues("add_task", {**args, "duration_min": 14}, said, state, base)
+    assert (wrong.code, wrong.field) == (ErrorCode.UNSTATED_VALUE, "duration_min")
+    assert wrong.message.startswith(
+        "'14 hours' is 840 minutes, not 14: add it as 2 tasks of 420 minutes, each with "
+        "duration_quote '14 hours', then plan the day with plan_day."
+    )
 
 
 def test_a_too_long_duration_with_a_quote_that_fits_gives_the_number(
