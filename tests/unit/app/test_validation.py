@@ -509,6 +509,41 @@ def test_an_amount_that_is_not_plain_is_not_checked(
     assert _issues("add_task", args, (f"Study, {quote}",), state, base) == []
 
 
+def test_a_duration_too_long_for_one_task_says_how_to_go_on(
+    state: SessionState, base: BaseData
+) -> None:
+    said = ("Schedule 14 hours of assignment work on Friday",)
+    args = {"title": "Assignment", "duration_min": 1440, "duration_quote": "14 hours"}
+    [issue] = _issues("add_task", args, said, state, base)
+    assert (issue.code, issue.field) == (ErrorCode.OUT_OF_RANGE, "duration_min")
+    assert issue.message.startswith(
+        "1440 is more than 720 minutes (12 hours), the most for one task. "
+        "'14 hours' is 840 minutes. Add longer work as several tasks of at most 720 minutes"
+    )
+    assert "plan_day" in issue.message
+    assert "The daily limit is the user's own setting, not a reason to refuse" in issue.message
+
+
+def test_a_too_long_duration_with_a_quote_that_fits_gives_the_number(
+    state: SessionState, base: BaseData
+) -> None:
+    args = {"task_id": "T1", "fields": {"duration_min": 900, "duration_quote": "12 hours"}}
+    [issue] = _issues("update_task", args, ("make it 12 hours",), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.OUT_OF_RANGE, "fields.duration_min")
+    assert issue.message.endswith("the most for one task. '12 hours' is 720 minutes: use 720")
+
+
+@pytest.mark.parametrize("quote", [None, "all day"])
+def test_a_too_long_duration_without_an_amount_says_how_to_go_on(
+    quote: str | None, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "Study", "duration_min": 800, "duration_quote": quote}
+    [issue] = _issues("add_task", args, ("Study all day",), state, base)
+    assert issue.message.startswith(
+        "800 is more than 720 minutes (12 hours), the most for one task. Add longer work"
+    )
+
+
 def test_a_deadline_quote_must_be_more_than_junk(state: SessionState, base: BaseData) -> None:
     args = {"title": "Haircut", "deadline": "2026-11-01T18:00", "deadline_quote": "a"}
     [issue] = _issues("add_task", args, (HAIRCUT,), state, base)
