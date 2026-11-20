@@ -324,6 +324,17 @@ class Controller:
         self.base: BaseData = load_base()
         self.rules = load_rules()
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> Controller:
+        """Return self: the controller is shared, never copied.
+
+        Gradio deep-copies the page config on every page load, and that config holds bound
+        methods of this controller (the tab state's `delete_callback`). Without this, each load
+        copied the backend too, including a loaded ZeroGPU model: seconds per load, long enough
+        to fail Gradio's own startup check.
+        """
+        del memo
+        return self
+
     # Views: what each handler returns for the page.
 
     def full(self, tab: Tab) -> tuple[Any, ...]:
