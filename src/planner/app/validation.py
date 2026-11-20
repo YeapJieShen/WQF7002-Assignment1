@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from planner.app.prompt import is_forwarded
 from planner.app.tools.args import (
+    MAX_TASK_MIN,
     TOOLS_BY_NAME,
     AddTaskArgs,
     CheckFeasibilityArgs,
@@ -44,12 +45,21 @@ if TYPE_CHECKING:
 DELETE_ALL: Final = "all"
 """Value of `delete_task.task_id` that targets every task."""
 
-_NUMBER_WORDS: Final = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|an?"
+_WORD_VALUES: Final[dict[str, float]] = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "half": 0.5, "a": 1, "an": 1,
+}  # fmt: skip
+_NUMBER_WORDS: Final = "|".join((*_WORD_VALUES, "half an?"))
 _TIME_UNITS: Final = "minutes?|mins?|hours?|hrs?|h"
 _AMOUNT_OF_TIME: Final = re.compile(
-    rf"\b(?:\d+(?:\.\d+)?\s*|(?:{_NUMBER_WORDS})\s+)(?:{_TIME_UNITS})\b"
+    rf"\b(?:(?P<digits>\d+(?:\.\d+)?)\s*|(?P<word>{_NUMBER_WORDS})\s+)(?P<unit>{_TIME_UNITS})\b"
 )
 """A duration quote must state an amount of time: a number (digits or word) and a unit."""
+_OTHER_AMOUNT: Final = re.compile(
+    r"\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen"
+    r"|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|half|quarter)\b"
+)
+"""A number left beside the amount ("an hour and a half", "1-2 hours") makes it not plain."""
 _MIN_DEADLINE_QUOTE: Final = 3
 """A deadline quote is the user's relative phrase; this and a letter or digit rule out junk."""
 
@@ -227,6 +237,27 @@ def _fields_at(model: type[BaseModel], path: tuple[int | str, ...]) -> list[str]
     return list(model.model_fields)
 
 
+def _minutes_in(words: str) -> int | None:
+    """The minutes a normalised quote states, or None unless it holds one plain amount."""
+    found = list(_AMOUNT_OF_TIME.finditer(words))
+    if len(found) != 1:
+        return None
+    match = found[0]
+    if _OTHER_AMOUNT.search(f"{words[: match.start()]} {words[match.end() :]}"):
+        return None
+    digits, word = match["digits"], match["word"]
+    number = float(digits) if digits else _WORD_VALUES[word.split()[0]]
+    return round(number * (1 if match["unit"].startswith("m") else 60))
+
+
+def _wrong_amount(minutes: int, words: str) -> int | None:
+    """The amount a quote states, when `minutes` differs from it by more than a tenth."""
+    stated = _minutes_in(words)
+    if stated is None or stated > MAX_TASK_MIN or abs(minutes - stated) * 10 <= stated:
+        return None  # not one plain amount, a part of work too long for one task, or a match
+    return stated
+
+
 def _normalised(text: str) -> str:
     return " ".join(text.casefold().split())
 
@@ -339,6 +370,9 @@ class _MeaningChecker:
             problem = f"'{quote}' is not in the user's messages this turn"
         elif not _states(what, words):
             problem = f"'{quote}' does not state a {what}"
+        elif isinstance(value, int) and (stated := _wrong_amount(value, words)) is not None:
+            message = f"'{quote}' is {stated} minutes, not {value}: use {stated}"
+            return [Issue(ErrorCode.UNSTATED_VALUE, value_field, message)]
         else:
             return []
         advice = f"do not guess: ask the user for it, or leave {value_field} out"

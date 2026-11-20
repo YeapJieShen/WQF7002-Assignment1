@@ -17,7 +17,9 @@ from pydantic_core import PydanticCustomError
 
 from planner.domain.models import Mode, TaskStatus, TaskType
 
-Duration = Annotated[int, Field(strict=True, ge=5, le=720)]
+MAX_TASK_MIN: Final = 720
+"""The longest one task can be, in minutes (12 hours)."""
+Duration = Annotated[int, Field(strict=True, ge=5, le=MAX_TASK_MIN)]
 Text = Annotated[str, Field(strict=True, min_length=1)]
 DurationQuote = Annotated[
     str | None,

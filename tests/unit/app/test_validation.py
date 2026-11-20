@@ -119,10 +119,12 @@ def test_duration_out_of_range(duration: int, codes: Codes) -> None:
     assert codes("add_task", {"title": "x", "duration_min": duration}) == [ErrorCode.OUT_OF_RANGE]
 
 
-@pytest.mark.parametrize("duration", [5, 720])
-def test_duration_bounds_inclusive(duration: int, codes: Codes) -> None:
-    args = {"title": "x", "duration_min": duration, "duration_quote": "45 minutes"}
-    assert codes("add_task", args) == []
+@pytest.mark.parametrize(("duration", "quote"), [(5, "5 minutes"), (720, "12 hours")])
+def test_duration_bounds_inclusive(
+    duration: int, quote: str, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "x", "duration_min": duration, "duration_quote": quote}
+    assert _issues("add_task", args, (f"Add it, {quote}",), state, base) == []
 
 
 @pytest.mark.parametrize("duration", ["20", 20.5, True])
@@ -446,12 +448,65 @@ def test_a_duration_quote_must_state_an_amount_of_time(
     assert f"'{quote}' does not state a duration" in issue.message
 
 
-@pytest.mark.parametrize("quote", ["about 20 minutes", "2 hours", "an hour", "1h", "Half an Hour"])
+@pytest.mark.parametrize(
+    ("quote", "minutes"),
+    [("about 20 minutes", 20), ("2 hours", 120), ("an hour", 60), ("1h", 60), ("Half an Hour", 30)],
+)
 def test_a_duration_quote_with_an_amount_of_time_is_accepted(
-    quote: str, state: SessionState, base: BaseData
+    quote: str, minutes: int, state: SessionState, base: BaseData
 ) -> None:
-    args = {"title": "Haircut", "duration_min": 60, "duration_quote": quote}
+    args = {"title": "Haircut", "duration_min": minutes, "duration_quote": quote}
     assert _issues("add_task", args, (f"Add a haircut, {quote}",), state, base) == []
+
+
+@pytest.mark.parametrize(
+    ("quote", "minutes"),
+    [("1.5 hours", 90), ("three hrs", 180), ("half hour", 30), ("45 mins", 45), ("12h", 720)],
+)
+def test_a_duration_must_be_the_amount_its_quote_states(
+    quote: str, minutes: int, state: SessionState, base: BaseData
+) -> None:
+    said = (f"Study, {quote}",)
+    args = {"title": "Study", "duration_min": minutes, "duration_quote": quote}
+    assert _issues("add_task", args, said, state, base) == []
+    wrong = {**args, "duration_min": minutes // 2}
+    [issue] = _issues("add_task", wrong, said, state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "duration_min")
+    assert issue.message == f"'{quote}' is {minutes} minutes, not {minutes // 2}: use {minutes}"
+
+
+def test_a_duration_within_a_tenth_of_its_quote_is_accepted(
+    state: SessionState, base: BaseData
+) -> None:
+    said = ("Study for 2 hours",)
+    near = {"title": "Study", "duration_min": 108, "duration_quote": "2 hours"}
+    assert _issues("add_task", near, said, state, base) == []
+    assert _issues("add_task", {**near, "duration_min": 107}, said, state, base) != []
+
+
+def test_an_updated_duration_must_be_the_amount_its_quote_states(
+    state: SessionState, base: BaseData
+) -> None:
+    args = {"task_id": "T3", "fields": {"duration_min": 60, "duration_quote": "30 min"}}
+    [issue] = _issues("update_task", args, ("make it 30 min",), state, base)
+    assert (issue.code, issue.field) == (ErrorCode.UNSTATED_VALUE, "fields.duration_min")
+
+
+@pytest.mark.parametrize(
+    ("quote", "minutes"),
+    [
+        ("an hour and a half", 90),
+        ("1-2 hours", 90),
+        ("2 hours 30 minutes", 150),
+        ("twenty five minutes", 25),
+        ("14 hours", 420),  # a part of work too long for one task
+    ],
+)
+def test_an_amount_that_is_not_plain_is_not_checked(
+    quote: str, minutes: int, state: SessionState, base: BaseData
+) -> None:
+    args = {"title": "Study", "duration_min": minutes, "duration_quote": quote}
+    assert _issues("add_task", args, (f"Study, {quote}",), state, base) == []
 
 
 def test_a_deadline_quote_must_be_more_than_junk(state: SessionState, base: BaseData) -> None:

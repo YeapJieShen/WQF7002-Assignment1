@@ -110,9 +110,13 @@ Short records of choices that are not obvious from the code: context, decision, 
   from one to twelve, "half", "a"/"an", then a unit such as min, hour, h), so "salon" or "a" fails;
   a deadline quote needs 3 or more characters with a letter or digit, so the user's own relative
   phrase ("this week", "tonight") passes without a date pattern.
-- Consequence: a value given in an earlier turn must be restated, and a quote proves only that
-  the words were said, not that the number matches them. Personas and loaded files are not
-  checked.
+  The duration must also be the amount its quote states (within a tenth); the rejection gives
+  the number ("'2 hours' is 120 minutes, not 60: use 120"). Only a plain amount is checked: a
+  quote with a second number ("an hour and a half", "1-2 hours", "2 hours 30 minutes") is
+  accepted as is. A quoted amount over the 720-minute task maximum allows any part up to it.
+- Consequence: a value given in an earlier turn must be restated. The parts of work too long for
+  one task are not summed against the quote. A deadline quote proves only that the words were
+  said, not the date. Personas and loaded files are not checked.
 
 ## Datetimes as the model writes them
 - Context: the model adds a "Z" or sends a date-only deadline; both were rejected and used up
