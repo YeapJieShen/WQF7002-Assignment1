@@ -518,10 +518,12 @@ def test_a_duration_too_long_for_one_task_says_how_to_go_on(
     assert (issue.code, issue.field) == (ErrorCode.OUT_OF_RANGE, "duration_min")
     assert issue.message.startswith(
         "1440 is more than 720 minutes (12 hours), the most for one task. "
-        "'14 hours' is 840 minutes. Add longer work as several tasks of at most 720 minutes"
+        "'14 hours' is 840 minutes: add it as 2 tasks of 420 minutes, each with duration_quote "
+        "'14 hours', then plan the day with plan_day. "
+        "The daily limit is the user's own setting, not a reason to refuse"
     )
-    assert "plan_day" in issue.message
-    assert "The daily limit is the user's own setting, not a reason to refuse" in issue.message
+    part = {**args, "duration_min": 420}
+    assert _issues("add_task", part, said, state, base) == []
 
 
 def test_a_too_long_duration_with_a_quote_that_fits_gives_the_number(
