@@ -202,6 +202,8 @@ CSS: Final = (
   border: 1px solid var(--primary-500); }
 .help { display: flex; justify-content: space-between; align-items: center; position: relative; }
 .help-mark { cursor: help; }
+/* Lift the HTML block above the fields below it, or their labels show through the tip. */
+.block:has(.help-mark:hover, .help-mark:focus-within) { position: relative; z-index: 50; }
 .help-tip { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
   white-space: pre-line; padding: var(--spacing-md) var(--spacing-lg);
   background: var(--background-fill-primary); color: var(--body-text-color);
