@@ -374,10 +374,16 @@ class _MeaningChecker:
 
     def _check_update(self, args: UpdateTaskArgs) -> list[Issue]:
         patch = args.fields
+        current = self.state.task(args.task_id)
+        # Resending the stored value is not a change, so it needs no quote.
+        duration = (
+            None if current and patch.duration_min == current.duration_min else patch.duration_min
+        )
+        deadline = None if current and patch.deadline == current.deadline else patch.deadline
         issues = [
             *self._known_tasks((args.task_id,), "task_id"),
-            *self._stated(patch.duration_min, patch.duration_quote, "duration", "fields."),
-            *self._stated(patch.deadline, patch.deadline_quote, "deadline", "fields."),
+            *self._stated(duration, patch.duration_quote, "duration", "fields."),
+            *self._stated(deadline, patch.deadline_quote, "deadline", "fields."),
             *self._in_horizon(patch.deadline, "fields.deadline"),
             *self._in_horizon(patch.earliest_start, "fields.earliest_start"),
             *self._known_place(patch.place, "fields.place", allow_anywhere=True),
@@ -390,7 +396,6 @@ class _MeaningChecker:
                         ErrorCode.CYCLE, "fields.prerequisites", "would create a dependency cycle"
                     )
                 )
-        current = self.state.task(args.task_id)
         if current is not None:
             merged = current.model_copy(update=patch.changes())
             issues += _task_consistency("fields.", merged.type, merged)
@@ -406,7 +411,10 @@ class _MeaningChecker:
         if not words:
             problem = f"{value_field} needs {quote_field}, the user's own words that state it"
         elif not any(words in message for message in self.said):
-            problem = f"'{quote}' is not in the user's messages this turn"
+            problem = (
+                f"'{quote}' is not in the user's messages this turn. If the user stated the "
+                f"{what}, copy their exact words"
+            )
         elif not _states(what, words):
             problem = f"'{quote}' does not state a {what}"
         elif isinstance(value, int) and (stated := _wrong_amount(value, words)) is not None:
