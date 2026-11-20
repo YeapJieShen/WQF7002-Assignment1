@@ -17,7 +17,9 @@ from pydantic_core import PydanticCustomError
 
 from planner.domain.models import Mode, TaskStatus, TaskType
 
-Duration = Annotated[int, Field(strict=True, ge=5, le=720)]
+MAX_TASK_MIN: Final = 720
+"""The longest one task can be, in minutes (12 hours)."""
+Duration = Annotated[int, Field(strict=True, ge=5, le=MAX_TASK_MIN)]
 Text = Annotated[str, Field(strict=True, min_length=1)]
 DurationQuote = Annotated[
     str | None,
@@ -32,7 +34,7 @@ DeadlineQuote = Annotated[
     Field(
         strict=True,
         description="Required with deadline: the user's own words that state it, copied "
-        "exactly, like 'by Friday'. If the user gave no deadline, omit both.",
+        "exactly from their message. If the user gave no deadline, omit both.",
     ),
 ]
 QUOTE_FIELDS: Final = frozenset({"duration_quote", "deadline_quote"})

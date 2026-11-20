@@ -117,14 +117,28 @@ Short records of choices that are not obvious from the code: context, decision, 
   last plain reply, and tells the model to ask instead of guessing. A pasted message (wrapped by
   `forwarded`) is someone else's words and never counts. The graph hands the turn's texts to
   `validate_call` as plain strings, so `app` stays framework-free. Quotes are never stored; an
-  update that changes neither value needs none.
+  update that changes neither value, or resends the stored one, needs none (the model copies a
+  task's deadline back with a quote from the session snapshot). A quote not found tells the
+  model to copy the user's exact words if they did state it. The deadline_quote description has
+  no example: the model wrote its example "by Friday" for "on Friday" in every b1 run.
   The quote must also say something: a duration quote needs an amount of time (digits or a word
   from one to twelve, "half", "a"/"an", then a unit such as min, hour, h), so "salon" or "a" fails;
   a deadline quote needs 3 or more characters with a letter or digit, so the user's own relative
   phrase ("this week", "tonight") passes without a date pattern.
-- Consequence: a value given in an earlier turn must be restated, and a quote proves only that
-  the words were said, not that the number matches them. Personas and loaded files are not
-  checked.
+  The duration must also be the amount its quote states (within a tenth); the rejection gives
+  the number ("'2 hours' is 120 minutes, not 60: use 120"). Only a plain amount is checked: a
+  quote with a second number ("an hour and a half", "1-2 hours", "2 hours 30 minutes") is
+  accepted as is. A quoted amount over the 720-minute task maximum is split into equal parts
+  (840 is 2 x 420), and each task must hold one part: a free choice let `duration_min=14` pass.
+  A duration over that maximum is rejected with the quote's minutes and how to go on ("add it as
+  2 tasks of 420 minutes, each with duration_quote '14 hours'", then `plan_day`; the daily limit
+  is the user's setting, not a reason to refuse). Naming the parts and the quote matters: told
+  only "several tasks", the model quoted its own "7 hours" and was rejected as unstated. It
+  replaces pydantic's bare "less than or equal to 720": for "Schedule 14 hours of assignment
+  work on Friday" the model sent 1440 quoting "14 hours", read 720 as the daily limit, and refused.
+- Consequence: a value given in an earlier turn must be restated. The number of parts added is
+  not counted against the quote. A deadline quote proves only that the words were said, not the
+  date. Personas and loaded files are not checked.
 
 ## Datetimes as the model writes them
 - Context: the model adds a "Z" or sends a date-only deadline; both were rejected and used up
