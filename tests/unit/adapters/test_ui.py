@@ -17,6 +17,7 @@ from planner.adapters.config import Settings
 from planner.adapters.graph import GAVE_UP
 from planner.adapters.ui import (
     COPY_JS,
+    CSS,
     FILE_TOO_LARGE,
     HELP_HTML,
     MARK_PASTE_JS,
@@ -468,6 +469,17 @@ def test_the_model_choice_is_a_dropdown_and_the_charge_notice_hides_behind_a_hel
         for b in blocks
     )
     assert "charge you" in HELP_HTML
+
+
+def test_the_endpoint_help_is_sized_by_its_row_not_by_the_question_mark() -> None:
+    # Anchored to the "?" with a fixed width, the tip ran past the accordion's edge and was clipped.
+    tip = re.search(r"\.help-tip \{([^}]*)\}", CSS)
+    mark = re.search(r"\.help-mark \{([^}]*)\}", CSS)
+    assert tip is not None
+    assert mark is not None
+    assert "left: 0; right: 0" in tip.group(1)
+    assert "width" not in tip.group(1)
+    assert "position" not in mark.group(1)
 
 
 def test_the_pace_controls_accept_exactly_what_the_domain_accepts() -> None:
