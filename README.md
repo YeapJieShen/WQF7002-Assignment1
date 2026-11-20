@@ -18,7 +18,7 @@ conda create -n <env> python=3.12 && conda activate <env>
 pip install -e . --group dev
 ollama pull qwen3:4b-instruct      # default local model (Qwen3-4B-Instruct-2507)
 planner                            # or: python -m planner -> http://127.0.0.1:7860
-# Full weights like the Space: pip install -r space/requirements.txt, then PLANNER_BACKEND=zerogpu
+# Full weights like the Space: pip install -r requirements.txt (add your own torch), then PLANNER_BACKEND=zerogpu
 ```
 
 **Locally on a GPU, without Ollama.** Runs Qwen3 in-process with transformers, as the Space does.
@@ -124,14 +124,27 @@ apply) and records a provider outage as an error, not a failed case. Reports go 
 
 ## Deploy (Hugging Face Space)
 
-`space/` holds a Gradio SDK Space on ZeroGPU: Qwen3-4B-Instruct-2507 runs in-process with
+The Space is a Gradio SDK Space on ZeroGPU: Qwen3-4B-Instruct-2507 runs in-process with
 transformers (`PLANNER_BACKEND=zerogpu`, set by `space/app.py`), on each visitor's own GPU quota.
-Visitors can instead give their own https OpenAI-compatible endpoint for the session. Log in once
-with `hf auth login`, then:
+Visitors can instead give their own https OpenAI-compatible endpoint for the session.
 
-```bash
-python scripts/deploy_space.py <user>/<space>
-```
+**It is a mirror of this repository.** On every push to `main`, the workflow
+`.github/workflows/deploy-space.yml` adds one commit on top of the GitHub commit that prepends
+`space/space-header.yml` (the Space's metadata) to `README.md`, then force-pushes it to the Space.
+The Space's tip is therefore the GitHub commit plus one "Space header for `<sha>`" commit whose
+parent is that GitHub commit, so what runs on the Space is traceable to an exact commit. The Space
+installs the root `requirements.txt` (which, for that reason, also lists `spaces` and `transformers`;
+`pip install -r requirements.txt` locally adds them too) and runs `space/app.py`.
+
+One-time setup, for the repository owner:
+
+1. Create a fine-grained Hugging Face token with write access to that one Space only.
+2. Add it to the GitHub repository as the secret `HF_TOKEN`.
+3. Optionally set the repository variable `HF_SPACE` (default `JieShenYeap/planning-delegate`).
+4. Run the workflow once by hand (Actions, deploy-space, Run workflow) or push to `main`.
+
+Without `HF_TOKEN` the workflow skips with a notice instead of failing. The token is used only to
+push the code; the Space itself holds no secrets, so visitors' GPU use is never billed to the owner.
 
 ## Versions
 

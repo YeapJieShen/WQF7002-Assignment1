@@ -46,7 +46,7 @@ dev = [
     "pytest-cov==7.1.0",
     "ruff==0.17.2",
 ]
-# What the ZeroGPU Space adds, as ranges; space/requirements.txt holds the exact pins. Never needed for tests or CI.
+# What the ZeroGPU Space adds, as ranges; the root requirements.txt holds the exact pins. Never needed for tests or CI.
 space = [
     "spaces",
     "torch",
@@ -88,7 +88,6 @@ ignore = [
     "SLF001",   # tests check private helpers on purpose
     "DTZ",      # times are naive by design
 ]
-"scripts/**" = ["INP001", "T201"]  # standalone scripts run by path and print progress
 "space/**" = ["INP001"]  # the Space's entry point, run by path
 
 [tool.ruff.lint.flake8-copyright]
@@ -108,7 +107,7 @@ convention = "google"
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["src", "tests", "scripts", "space/app.py"]
+files = ["src", "tests", "space/app.py"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 

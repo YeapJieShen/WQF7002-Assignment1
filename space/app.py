@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Hugging Face Space entry point: the planner on ZeroGPU, run by the Gradio SDK.
 
-`deploy_space.py` uploads `src/` beside this file; nothing is pip-installed from it.
+The Space is a mirror of the repository (see the README's Deploy section) and runs this file from
+`space/`, so `src/` is put on the path here; the package itself is not pip-installed.
 """
 
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import spaces  # noqa: F401 - ZeroGPU must patch CUDA before anything imports torch
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 os.environ.setdefault("PLANNER_BACKEND", "zerogpu")
 
 # Importing builds the app, which loads the model and registers its @spaces.GPU function.
