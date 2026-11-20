@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Jie Shen Yeap
 # SPDX-License-Identifier: MIT
+import copy
 import inspect
 import json
 import random
@@ -439,6 +440,16 @@ def test_the_toolbar_has_the_file_buttons_and_the_demo_lives_in_the_sidebar() ->
         _caption(b) for b in blocks if getattr(b.parent, "elem_classes", None) == ["toolbar"]
     }
     assert toolbar == {"Save session", "Load session", "Download chat log"}
+
+
+def test_a_page_load_shares_the_backend_instead_of_copying_it() -> None:
+    # Gradio deep-copies the page config on every load, and the tab state's delete_callback
+    # is a bound method of the controller; copying it once copied the loaded model each time.
+    backend = FakeBackend(ScriptedModel())
+    app = build_app(backend, settings())
+    [state] = [c for c in app.get_config_file()["components"] if c["type"] == "state"]
+    callback = copy.deepcopy(state["props"])["delete_callback"]
+    assert callback.__self__.backend is backend
 
 
 def test_choosing_the_default_model_applies_at_once_and_hides_the_endpoint_fields() -> None:
