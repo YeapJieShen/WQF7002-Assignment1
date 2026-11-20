@@ -60,10 +60,9 @@ _OTHER_AMOUNT: Final = re.compile(
     r"|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|half|quarter)\b"
 )
 """A number left beside the amount ("an hour and a half", "1-2 hours") makes it not plain."""
-_SPLIT: Final = (
-    f"Add longer work as several tasks of at most {MAX_TASK_MIN} minutes each, then plan the day "
-    "with plan_day. The daily limit is the user's own setting, not a reason to refuse: plan_day "
-    "fits what it can, so report the plan, its total and what did not fit"
+_NOT_A_REFUSAL: Final = (
+    "The daily limit is the user's own setting, not a reason to refuse: plan_day fits what it "
+    "can, so report the plan, its total and what did not fit"
 )
 _MIN_DEADLINE_QUOTE: Final = 3
 """A deadline quote is the user's relative phrase; this and a letter or digit rule out junk."""
@@ -265,10 +264,16 @@ def _too_long(minutes: object, quote: object) -> str:
     )
     stated = _minutes_in(_normalised(quote)) if isinstance(quote, str) else None
     if stated is None:
-        return f"{most}. {_SPLIT}"
+        split = f"Add longer work as several tasks of at most {MAX_TASK_MIN} minutes each"
+        return f"{most}. {split}, then plan the day with plan_day. {_NOT_A_REFUSAL}"
     if stated <= MAX_TASK_MIN:
         return f"{most}. '{quote}' is {stated} minutes: use {stated}"
-    return f"{most}. '{quote}' is {stated} minutes. {_SPLIT}"
+    parts = -(-stated // MAX_TASK_MIN)
+    split = f"add it as {parts} tasks of {-(-stated // parts)} minutes, each with duration_quote"
+    return (
+        f"{most}. '{quote}' is {stated} minutes: {split} '{quote}', "
+        f"then plan the day with plan_day. {_NOT_A_REFUSAL}"
+    )
 
 
 def _minutes_in(words: str) -> int | None:
