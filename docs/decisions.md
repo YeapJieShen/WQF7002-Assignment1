@@ -107,8 +107,8 @@ Short records of choices that are not obvious from the code: context, decision, 
   `validate_call` as plain strings, so `app` stays framework-free. Quotes are never stored; an
   update that changes neither value, or resends the stored one, needs none (the model copies a
   task's deadline back with a quote from the session snapshot). A quote not found tells the
-  model to copy the user's exact words if they did state it (it wrote "by Friday", the schema
-  example, for "on Friday").
+  model to copy the user's exact words if they did state it. The deadline_quote description has
+  no example: the model wrote its example "by Friday" for "on Friday" in every b1 run.
   The quote must also say something: a duration quote needs an amount of time (digits or a word
   from one to twelve, "half", "a"/"an", then a unit such as min, hour, h), so "salon" or "a" fails;
   a deadline quote needs 3 or more characters with a letter or digit, so the user's own relative
