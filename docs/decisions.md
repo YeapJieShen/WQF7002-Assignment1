@@ -38,17 +38,20 @@ Short records of choices that are not obvious from the code: context, decision, 
   a task.
 - Consequence: a mitigation, not a boundary; see the accepted risk above.
 
-## The Space mirrors GitHub, plus one header commit
+## The Space deploys GitHub's files as one commit per push
 - Context: the Space is its own git repo and needs a YAML metadata header at the top of its
   `README.md`; the GitHub README must not carry it. The earlier script uploaded a subset of files
   under a new commit each time, so the Space could not be tied to a GitHub commit.
-- Decision: on push to `main`, a workflow adds one commit on top of the GitHub commit that only
-  prepends `space/space-header.yml` to `README.md`, and force-pushes it to the Space. The Space
-  builds from the root `requirements.txt` and runs `space/app.py`.
-- Consequence: the Space's tip is the GitHub commit plus a "Space header for `<sha>`" commit whose
-  parent is that GitHub commit. The header commit is rebuilt each deploy, so the push is always a
-  force push to the Space only. `requirements.txt` carries the Space's extras, and `pydantic` is
-  held at 2.12.5 for the Space image's `gradio[mcp]`. The token is used only to upload.
+- Decision: on push to `main`, a workflow builds one commit from the GitHub commit's files with
+  `space/space-header.yml` prepended to `README.md` and binary files (`*.pdf`, `*.docx`) left out,
+  and pushes it on top of the Space's previous deploy. The Space builds from the root
+  `requirements.txt` and runs `space/app.py`.
+- Consequence: each Space commit is named "Space deploy for `<sha>`", so it is traceable to a GitHub
+  commit, but the Space's history is not GitHub's history. An exact mirror was used until the report
+  PDF landed in `docs/`: Hugging Face rejects binary files pushed over plain git, and once a binary is
+  in the history every later mirror push is rejected too. `requirements.txt` carries the Space's
+  extras, and `pydantic` is held at 2.12.5 for the Space image's `gradio[mcp]`. The token is used
+  only to upload.
 
 ## ZeroGPU in-process transformers, not the Inference API; Python 3.12 on the Space
 - Context: the Hugging Face Inference API needs paid credits ($0 available); ZeroGPU gives each
