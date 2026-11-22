@@ -128,11 +128,12 @@ The Space is a Gradio SDK Space on ZeroGPU: Qwen3-4B-Instruct-2507 runs in-proce
 transformers (`PLANNER_BACKEND=zerogpu`, set by `space/app.py`), on each visitor's own GPU quota.
 Visitors can instead give their own https OpenAI-compatible endpoint for the session.
 
-**It is a mirror of this repository.** On every push to `main`, the workflow
-`.github/workflows/deploy-space.yml` adds one commit on top of the GitHub commit that prepends
-`space/space-header.yml` (the Space's metadata) to `README.md`, then force-pushes it to the Space.
-The Space's tip is therefore the GitHub commit plus one "Space header for `<sha>`" commit whose
-parent is that GitHub commit, so what runs on the Space is traceable to an exact commit. The Space
+**It deploys from this repository.** On every push to `main`, the workflow
+`.github/workflows/deploy-space.yml` builds one commit from the GitHub commit's files, prepends
+`space/space-header.yml` (the Space's metadata) to `README.md`, leaves out binary files (`*.pdf`,
+`*.docx`, which Hugging Face accepts only through its Xet storage), and pushes it on top of the
+Space's previous deploy. Each commit is named "Space deploy for `<sha>`", so what runs on the Space
+is traceable to an exact GitHub commit. The Space
 installs the root `requirements.txt` (which, for that reason, also lists `spaces` and `transformers`;
 `pip install -r requirements.txt` locally adds them too) and runs `space/app.py`.
 

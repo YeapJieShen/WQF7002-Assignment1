@@ -1,6 +1,7 @@
 name: deploy-space
-# Mirrors main to the Hugging Face Space: the GitHub commit plus one commit that adds the Space's
-# metadata header to README.md. See the README's Deploy section and docs/decisions.md.
+# Deploys main to the Hugging Face Space: one commit with the GitHub commit's files, the Space's
+# metadata header prepended to README.md, and binary files left out (the Space rejects them over
+# plain git). See the README's Deploy section and docs/decisions.md.
 on:
   push:
     branches: [main]
@@ -23,17 +24,30 @@ jobs:
         run: echo "::notice title=Space not deployed::The HF_TOKEN secret is not set; see the README's Deploy section."
       - uses: actions/checkout@v7
         if: env.HF_TOKEN != ''
-        with:
-          fetch-depth: 0
-      - name: Add the Space header commit
+      - name: Build the Space commit
         if: env.HF_TOKEN != ''
         run: |
+          space="https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}"
+          git fetch --quiet "$space" main:space-main || true
+          # Hugging Face rejects binary files pushed over plain git; the Space does not need them.
+          git rm --cached --quiet --ignore-unmatch -- '*.pdf' '*.docx'
           cat space/space-header.yml README.md > README.space.md
           mv README.space.md README.md
+          git add README.md
+          tree=$(git write-tree)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --all --message "Space header for ${GITHUB_SHA}"
+          if git rev-parse --quiet --verify space-main >/dev/null; then
+            if [ "$(git rev-parse space-main^{tree})" = "$tree" ]; then
+              echo "::notice title=Space up to date::The Space already has these files."
+              exit 0
+            fi
+            commit=$(git commit-tree "$tree" -p space-main -m "Space deploy for ${GITHUB_SHA}")
+          else
+            commit=$(git commit-tree "$tree" -m "Space deploy for ${GITHUB_SHA}")
+          fi
+          echo "SPACE_COMMIT=$commit" >> "$GITHUB_ENV"
       - name: Push to the Space
-        if: env.HF_TOKEN != ''
-        # The commit is rebuilt on every run, so this is always a force push, to the Space only.
-        run: git push --force "https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main
+        if: env.HF_TOKEN != '' && env.SPACE_COMMIT != ''
+        # A fast-forward on top of the Space's last deploy; --force covers a Space reset by hand.
+        run: git push --force "https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" "${SPACE_COMMIT}:main"
