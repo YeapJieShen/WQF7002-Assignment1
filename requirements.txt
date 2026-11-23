@@ -2,7 +2,7 @@
 # Install the app itself with: pip install -e .
 # The Hugging Face Space builds from this file too (see the README's Deploy section), so it also holds
 # what the ZeroGPU backend needs; `pip install -r requirements.txt` therefore adds transformers and spaces.
-gradio[oauth]==6.31.0
+gradio[oauth]==6.32.0
 langgraph==1.2.18
 langchain-core==1.7.0
 langchain-openai==1.7.3
