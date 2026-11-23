@@ -3,7 +3,7 @@
 # The Hugging Face Space builds from this file too (see the README's Deploy section), so it also holds
 # what the ZeroGPU backend needs; `pip install -r requirements.txt` therefore adds transformers and spaces.
 gradio[oauth]==6.31.0
-langgraph==1.2.18
+langgraph==1.2.24
 langchain-core==1.7.0
 langchain-openai==1.7.3
 pandas==3.1.0
