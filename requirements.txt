@@ -6,7 +6,7 @@ gradio[oauth]==6.31.0
 langgraph==1.2.18
 langchain-core==1.7.0
 langchain-openai==1.7.3
-pandas==3.1.0
+pandas==3.1.1
 plotly==7.1.0
 # Held at the version gradio[mcp], which the Space image installs, accepts.
 pydantic==2.12.5
