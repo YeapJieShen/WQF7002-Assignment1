@@ -44,7 +44,7 @@ dev = [
     "pandas-stubs==3.1.0.261029",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
-    "ruff==0.17.2",
+    "ruff==0.17.6",
 ]
 # What the ZeroGPU Space adds, as ranges; the root requirements.txt holds the exact pins. Never needed for tests or CI.
 space = [
